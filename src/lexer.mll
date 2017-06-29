@@ -18,10 +18,13 @@ let ws = [' ' '\t' '\n']+
 rule read = parse
   | "let" { LET }
   | "type" { TYPE }
+  | "of" { OF }
+  | ";;" { DOUBLE_SEMICOLON }
   | '=' { EQUAL }
   | '(' { LEFT_PAREN }
   | ')' { RIGHT_PAREN }
   | '|' { PIPE }
+  | '*' { ASTERISK }
   | ws { read lexbuf }
   | int { INT (int_of_string (L.lexeme lexbuf)) }
   | identifier { IDENTIFIER (L.lexeme lexbuf) }

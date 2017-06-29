@@ -6,7 +6,10 @@ type identifier = Identifier of string
 type expression = Int of int
 [@@deriving sexp]
 
-type variant = Variant of string
+type typ = Type of identifier | Tuple of typ * typ
+[@@deriving sexp]
+
+type variant = Variant of string | VariantOf of (string * typ)
 [@@deriving sexp]
 
 type type_decl = variant list
@@ -14,7 +17,7 @@ type type_decl = variant list
 
 type statement =
     Let of (identifier * expression)
-  | Type of (identifier * type_decl)
+  | TypeDecl of (identifier * type_decl)
 [@@deriving sexp]
 
 type t = statement list
