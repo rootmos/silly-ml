@@ -1,6 +1,6 @@
 open Parsed
 
-let parse s = Lexing.from_string s |> Parser.fsm Lexer.read
+let parse s = Lexing.from_string s |> Parser.program Lexer.read
 
 let%test_unit "parse empty string" =
   [%test_result: t]
@@ -10,29 +10,44 @@ let%test_unit "parse empty string" =
 let%test_unit "parse: let x = 7" =
   [%test_result: t]
   (parse "let x = 7")
-  ~expect:[Let (Identifier "x", Int 7)]
+  ~expect:[S_let ("x", E_int 7)]
+
+let%test_unit "parse: let x = y" =
+  [%test_result: t]
+  (parse "let x = y")
+  ~expect:[S_let ("x", E_ident "y")]
+
+let%test_unit "parse: let x = A" =
+  [%test_result: t]
+  (parse "let x = A")
+  ~expect:[S_let ("x", E_const "A")]
+
+(*let%test_unit "parse: let y = match x with A i -> u | B s -> v" =*)
+  (*[%test_result: t]*)
+  (*(parse "let y = match x with A i -> u | B s -> v")*)
+  (*~expect:[Let (Identifier "y", Match (Identifier "x",)]*)
 
 let%test_unit "parse: let x = 7;; let y = 8" =
   [%test_result: t]
   (parse "let x = 7;; let y = 8")
-  ~expect:[Let (Identifier "x", Int 7); Let (Identifier "y", Int 8)]
+  ~expect:[S_let ("x", E_int 7); S_let ("y", E_int 8)]
 
 let%test_unit "parse: type t = A" =
   [%test_result: t]
   (parse "type t = A")
-  ~expect:[TypeDecl (Identifier "t", [Variant "A"])]
+  ~expect:[S_type_decl ("t", [V_nullary "A"])]
 
 let%test_unit "parse: type t = A | B | C" =
   [%test_result: t]
   (parse "type t = A | B | C")
-  ~expect:[TypeDecl (Identifier "t", [Variant "A"; Variant "B"; Variant "C"])]
+  ~expect:[S_type_decl ("t", [V_nullary "A"; V_nullary "B"; V_nullary "C"])]
 
 let%test_unit "parse: type t = A of int" =
   [%test_result: t]
   (parse "type t = A of int")
-  ~expect:[TypeDecl (Identifier "t", [VariantOf ("A", Type (Identifier "int"))])]
+  ~expect:[S_type_decl ("t", [V_of ("A", T_ident "int")])]
 
 let%test_unit "parse: type t = A of int * string" =
   [%test_result: t]
   (parse "type t = A of int * string")
-  ~expect:[TypeDecl (Identifier "t", [VariantOf ("A", Tuple (Type (Identifier "int"), Type (Identifier "string")))])]
+  ~expect:[S_type_decl ("t", [V_of ("A", T_tuple ((T_ident "int"), T_ident "string"))])]

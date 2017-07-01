@@ -1,23 +1,27 @@
 open Core_kernel.Std
 
-type identifier = Identifier of string
+type expression =
+  E_int of int
+| E_ident of string
+| E_const of string
 [@@deriving sexp]
 
-type expression = Int of int
+type typ =
+  T_ident of string
+| T_tuple of typ * typ
 [@@deriving sexp]
 
-type typ = Type of identifier | Tuple of typ * typ
-[@@deriving sexp]
-
-type variant = Variant of string | VariantOf of (string * typ)
+type variant =
+  V_nullary of string
+| V_of of (string * typ)
 [@@deriving sexp]
 
 type type_decl = variant list
 [@@deriving sexp]
 
 type statement =
-    Let of (identifier * expression)
-  | TypeDecl of (identifier * type_decl)
+    S_let of (string * expression)
+  | S_type_decl of (string * type_decl)
 [@@deriving sexp]
 
 type t = statement list

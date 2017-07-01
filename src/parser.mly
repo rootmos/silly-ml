@@ -12,16 +12,16 @@
 %token <int> INT
 %token EOF
 
-%start <Parsed.t> fsm
+%start <Parsed.t> program
 %%
 
-fsm:
+program:
   | ss = separated_list(DOUBLE_SEMICOLON, statement); EOF { ss }
   ;
 
 statement:
-  | LET; i = identifier; EQUAL; e = expression { Parsed.Let (i, e) }
-  | TYPE; i = identifier; EQUAL; vs = variants { Parsed.TypeDecl (i, vs) }
+  | LET; i = IDENTIFIER; EQUAL; e = expression { Parsed.S_let (i, e) }
+  | TYPE; i = IDENTIFIER; EQUAL; vs = variants { Parsed.S_type_decl (i, vs) }
   ;
 
 variants:
@@ -29,19 +29,17 @@ variants:
   ;
 
 variant:
-  | v = VARIANT; OF; t = typ { Parsed.VariantOf (v, t) }
-  | v = VARIANT { Parsed.Variant v }
+  | v = VARIANT; OF; t = typ { Parsed.V_of (v, t) }
+  | v = VARIANT { Parsed.V_nullary v }
   ;
 
 typ:
-  | i = identifier; ASTERISK; t = typ { Parsed.Tuple (Parsed.Type i, t) }
-  | i = identifier { Parsed.Type i }
-  ;
-
-identifier:
-  | i = IDENTIFIER { Parsed.Identifier i }
+  | i = IDENTIFIER; ASTERISK; t = typ { Parsed.T_tuple (Parsed.T_ident i, t) }
+  | i = IDENTIFIER { Parsed.T_ident i }
   ;
 
 expression:
-  | i = INT { Parsed.Int i }
+  | i = INT { Parsed.E_int i }
+  | i = IDENTIFIER { Parsed.E_ident i }
+  | v = VARIANT { Parsed.E_const v }
   ;
