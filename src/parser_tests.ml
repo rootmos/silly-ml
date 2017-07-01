@@ -56,3 +56,8 @@ let%test_unit "parse: type t = A of int * string" =
   [%test_result: t]
   (parse "type t = A of int * string")
   ~expect:[S_type_decl ("t", [V_of ("A", T_tuple ((T_ident "int"), T_ident "string"))])]
+
+let%test_unit "parse: type t = A of int * string | B" =
+  [%test_result: t]
+  (parse "type t = A of int * string | B")
+  ~expect:[S_type_decl ("t", [V_of ("A", T_tuple ((T_ident "int"), T_ident "string")); V_nullary "B"])]
