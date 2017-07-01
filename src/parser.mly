@@ -20,7 +20,7 @@ program:
   ;
 
 statement:
-  | LET; i = IDENTIFIER; EQUAL; e = expression { Parsed.S_let (i, e) }
+  | LET; p = pattern; EQUAL; e = expression { Parsed.S_let (p, e) }
   | TYPE; i = IDENTIFIER; EQUAL; vs = variants { Parsed.S_type_decl (i, vs) }
   ;
 
@@ -42,4 +42,9 @@ expression:
   | i = INT { Parsed.E_int i }
   | i = IDENTIFIER { Parsed.E_ident i }
   | v = VARIANT { Parsed.E_const v }
+  ;
+
+pattern:
+  | i = INT { Parsed.P_int i }
+  | i = IDENTIFIER { Parsed.P_ident i }
   ;
