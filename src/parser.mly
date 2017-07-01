@@ -23,12 +23,10 @@ let rec mk_tuple_expression = function
   | e :: [] -> e
   | t :: ts -> Parsed.E_tuple (t, mk_tuple_expression ts)
 
-let mk_tuple_pattern xs =
-  let rec go = function
-    | [] -> Parsed.P_unit
-    | t :: [] -> t
-    | t :: ts -> Parsed.P_tuple (t, go ts) in
-  go xs
+let rec mk_tuple_pattern = function
+  | [] -> Parsed.P_unit
+  | t :: [] -> t
+  | t :: ts -> Parsed.P_tuple (t, mk_tuple_pattern ts)
 
 %}
 
