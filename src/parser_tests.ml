@@ -52,6 +52,16 @@ let%test_unit "parse: let x = (1, 2)" =
   (parse "let x = (1, 2)")
   ~expect:[S_let (P_ident "x", E_tuple (E_int 1, E_int 2))]
 
+let%test_unit "parse: let x = ((1, 2), 3)" =
+  [%test_result: t]
+  (parse "let x = ((1, 2), 3)")
+  ~expect:[S_let (P_ident "x", E_tuple (E_tuple (E_int 1, E_int 2), E_int 3))]
+
+let%test_unit "parse: let x = (1, (2, 3))" =
+  [%test_result: t]
+  (parse "let x = (1, (2, 3))")
+  ~expect:[S_let (P_ident "x", E_tuple (E_int 1, E_tuple (E_int 2, E_int 3)))]
+
 let%test_unit "parse: let x = (1, y, 3)" =
   [%test_result: t]
   (parse "let x = (1, y, 3)")
@@ -66,6 +76,16 @@ let%test_unit "parse: let (1, 2) = x" =
   [%test_result: t]
   (parse "let (1, 2) = x")
   ~expect:[S_let (P_tuple (P_int 1, P_int 2), E_ident "x")]
+
+let%test_unit "parse: let ((1, 2), 3) = x" =
+  [%test_result: t]
+  (parse "let ((1, 2), 3) = x")
+  ~expect:[S_let (P_tuple (P_tuple (P_int 1, P_int 2), P_int 3), E_ident "x")]
+
+let%test_unit "parse: let (1, (2, 3)) = x" =
+  [%test_result: t]
+  (parse "let (1, (2, 3)) = x")
+  ~expect:[S_let (P_tuple (P_int 1, P_tuple (P_int 2, P_int 3)), E_ident "x")]
 
 let%test_unit "parse: let (1, y, 3) = x" =
   [%test_result: t]
