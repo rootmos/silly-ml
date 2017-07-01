@@ -42,8 +42,8 @@ variants:
   ;
 
 variant:
-  | v = VARIANT; OF; t = typ { Parsed.V_of (v, t) }
-  | v = VARIANT { Parsed.V_nullary v }
+  | v = VARIANT; OF; t = typ { Parsed.V_constr (v, Some t) }
+  | v = VARIANT { Parsed.V_constr (v, None) }
   ;
 
 typ:

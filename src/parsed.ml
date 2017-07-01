@@ -19,8 +19,7 @@ type typ =
 [@@deriving sexp]
 
 type variant =
-  V_nullary of string
-| V_of of (string * typ)
+  V_constr of (string * typ option)
 [@@deriving sexp]
 
 type type_decl = variant list

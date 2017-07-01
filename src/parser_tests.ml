@@ -65,24 +65,24 @@ let%test_unit "parse: let x = 7;; let y = 8" =
 let%test_unit "parse: type t = A" =
   [%test_result: t]
   (parse "type t = A")
-  ~expect:[S_type_decl ("t", [V_nullary "A"])]
+  ~expect:[S_type_decl ("t", [V_constr ("A", None)])]
 
 let%test_unit "parse: type t = A | B | C" =
   [%test_result: t]
   (parse "type t = A | B | C")
-  ~expect:[S_type_decl ("t", [V_nullary "A"; V_nullary "B"; V_nullary "C"])]
+  ~expect:[S_type_decl ("t", [V_constr ("A", None); V_constr ("B", None); V_constr ("C", None)])]
 
 let%test_unit "parse: type t = A of int" =
   [%test_result: t]
   (parse "type t = A of int")
-  ~expect:[S_type_decl ("t", [V_of ("A", T_ident "int")])]
+  ~expect:[S_type_decl ("t", [V_constr ("A", Some (T_ident "int"))])]
 
 let%test_unit "parse: type t = A of int * string" =
   [%test_result: t]
   (parse "type t = A of int * string")
-  ~expect:[S_type_decl ("t", [V_of ("A", T_tuple ((T_ident "int"), T_ident "string"))])]
+  ~expect:[S_type_decl ("t", [V_constr ("A", Some (T_tuple ((T_ident "int"), T_ident "string")))])]
 
 let%test_unit "parse: type t = A of int * string | B" =
   [%test_result: t]
   (parse "type t = A of int * string | B")
-  ~expect:[S_type_decl ("t", [V_of ("A", T_tuple ((T_ident "int"), T_ident "string")); V_nullary "B"])]
+  ~expect:[S_type_decl ("t", [V_constr ("A", Some (T_tuple ((T_ident "int"), T_ident "string"))); V_constr ("B", None)])]
