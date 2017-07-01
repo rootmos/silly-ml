@@ -1,5 +1,12 @@
 open Core_kernel.Std
 
+type pattern =
+  P_int of int
+| P_ident of string
+| P_tuple of pattern * pattern
+| P_unit
+[@@deriving sexp]
+
 type expression =
   E_int of int
 | E_ident of string
@@ -7,13 +14,7 @@ type expression =
 | E_constr of string * expression option
 | E_tuple of expression * expression
 | E_unit
-[@@deriving sexp]
-
-type pattern =
-  P_int of int
-| P_ident of string
-| P_tuple of pattern * pattern
-| P_unit
+| E_let of pattern * expression * expression
 [@@deriving sexp]
 
 type typ =

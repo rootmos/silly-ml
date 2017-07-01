@@ -19,6 +19,7 @@ rule read = parse
   | "let" { LET }
   | "type" { TYPE }
   | "of" { OF }
+  | "in" { IN }
   | ";;" { DOUBLE_SEMICOLON }
   | '=' { EQUAL }
   | '(' { LEFT_PAREN }

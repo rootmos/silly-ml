@@ -3,6 +3,7 @@
 %token EQUAL
 %token LET
 %token OF
+%token IN
 %token TYPE
 %token PIPE
 %token ASTERISK
@@ -60,6 +61,7 @@ expression:
   | v = VARIANT; e = expression { Parsed.E_constr (v, Some e) }
   | v = VARIANT { Parsed.E_constr (v, None) }
   | f = simple_expression; args = nonempty_list(simple_expression) { Parsed.E_apply (f, args) }
+  | LET; p = pattern; EQUAL; e = expression; IN body = expression { Parsed.E_let (p, e, body) }
   | se = simple_expression { se }
   ;
 
