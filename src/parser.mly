@@ -17,12 +17,10 @@
 
 %{
 
-let mk_tuple_expression xs =
-  let rec go = function
-    | [] -> Parsed.E_unit
-    | t :: [] -> t
-    | t :: ts -> Parsed.E_tuple (t, go ts) in
-  go xs
+let rec mk_tuple_expression = function
+  | [] -> Parsed.E_unit
+  | e :: [] -> e
+  | t :: ts -> Parsed.E_tuple (t, mk_tuple_expression ts)
 
 let mk_tuple_pattern xs =
   let rec go = function
@@ -59,10 +57,15 @@ typ:
   ;
 
 expression:
-  | i = INT { Parsed.E_int i }
-  | i = IDENTIFIER { Parsed.E_ident i }
   | v = VARIANT; e = expression { Parsed.E_constr (v, Some e) }
   | v = VARIANT { Parsed.E_constr (v, None) }
+  | f = simple_expression; args = nonempty_list(simple_expression) { Parsed.E_apply (f, args) }
+  | se = simple_expression { se }
+  ;
+
+simple_expression:
+  | i = INT { Parsed.E_int i }
+  | i = IDENTIFIER { Parsed.E_ident i }
   | xs = delimited(LEFT_PAREN, separated_list(COMMA, expression), RIGHT_PAREN) { mk_tuple_expression xs }
   ;
 

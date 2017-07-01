@@ -12,6 +12,11 @@ let%test_unit "parse: let x = 7" =
   (parse "let x = 7")
   ~expect:[S_let (P_ident "x", E_int 7)]
 
+let%test_unit "parse: let x = (7)" =
+  [%test_result: t]
+  (parse "let x = (7)")
+  ~expect:[S_let (P_ident "x", E_int 7)]
+
 let%test_unit "parse: let 7 = x" =
   [%test_result: t]
   (parse "let 7 = x")
@@ -21,6 +26,26 @@ let%test_unit "parse: let x = y" =
   [%test_result: t]
   (parse "let x = y")
   ~expect:[S_let (P_ident "x", E_ident "y")]
+
+let%test_unit "parse: let x = f y" =
+  [%test_result: t]
+  (parse "let x = f y")
+  ~expect:[S_let (P_ident "x", E_apply (E_ident "f", [E_ident "y"]))]
+
+let%test_unit "parse: let x = f y z" =
+  [%test_result: t]
+  (parse "let x = f y z")
+  ~expect:[S_let (P_ident "x", E_apply (E_ident "f", [E_ident "y"; E_ident "z"]))]
+
+let%test_unit "parse: let x = (f y) z" =
+  [%test_result: t]
+  (parse "let x = (f y) z")
+  ~expect:[S_let (P_ident "x", E_apply (E_apply (E_ident "f", [E_ident "y"]), [E_ident "z"]))]
+
+let%test_unit "parse: let x = f (y z)" =
+  [%test_result: t]
+  (parse "let x = f (y z)")
+  ~expect:[S_let (P_ident "x", E_apply (E_ident "f", [E_apply (E_ident "y", [E_ident "z"])]))]
 
 let%test_unit "parse: let x = A" =
   [%test_result: t]

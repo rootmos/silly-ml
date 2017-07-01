@@ -3,6 +3,7 @@ open Core_kernel.Std
 type expression =
   E_int of int
 | E_ident of string
+| E_apply of expression * expression list
 | E_constr of string * expression option
 | E_tuple of expression * expression
 | E_unit

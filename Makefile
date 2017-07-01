@@ -5,7 +5,7 @@ SRC=$(shell git ls-files)
 
 .PHONY: test
 test: parser_tests.native $(SRC)
-	./$< inline-test-runner test
+	./$< inline-test-runner test -verbose -stop-on-error
 
 .PHONY: clean
 clean:
