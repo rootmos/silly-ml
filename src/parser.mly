@@ -7,12 +7,25 @@
 %token PIPE
 %token ASTERISK
 %token DOUBLE_SEMICOLON
+%token COMMA
 %token <string> IDENTIFIER
 %token <string> VARIANT
 %token <int> INT
 %token EOF
 
 %start <Parsed.t> program
+
+%{
+
+let mk_tuple xs =
+  let rec go = function
+    | [] -> Parsed.E_unit
+    | t :: [] -> t
+    | t :: ts -> Parsed.E_tuple (t, go ts) in
+  go xs
+
+%}
+
 %%
 
 program:
@@ -42,6 +55,7 @@ expression:
   | i = INT { Parsed.E_int i }
   | i = IDENTIFIER { Parsed.E_ident i }
   | v = VARIANT { Parsed.E_const v }
+  | xs = delimited(LEFT_PAREN, separated_list(COMMA, expression), RIGHT_PAREN) { mk_tuple xs }
   ;
 
 pattern:

@@ -22,6 +22,21 @@ let%test_unit "parse: let x = A" =
   (parse "let x = A")
   ~expect:[S_let (P_ident "x", E_const "A")]
 
+let%test_unit "parse: let x = ()" =
+  [%test_result: t]
+  (parse "let x = ()")
+  ~expect:[S_let (P_ident "x", E_unit)]
+
+let%test_unit "parse: let x = (1, 2)" =
+  [%test_result: t]
+  (parse "let x = (1, 2)")
+  ~expect:[S_let (P_ident "x", E_tuple (E_int 1, E_int 2))]
+
+let%test_unit "parse: let x = (1, 2, 3)" =
+  [%test_result: t]
+  (parse "let x = (1, 2, 3)")
+  ~expect:[S_let (P_ident "x", E_tuple (E_int 1, E_tuple (E_int 2, E_int 3)))]
+
 let%test_unit "parse: let 7 = x" =
   [%test_result: t]
   (parse "let 7 = x")
