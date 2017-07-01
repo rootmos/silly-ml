@@ -20,7 +20,17 @@ let%test_unit "parse: let x = y" =
 let%test_unit "parse: let x = A" =
   [%test_result: t]
   (parse "let x = A")
-  ~expect:[S_let (P_ident "x", E_const "A")]
+  ~expect:[S_let (P_ident "x", E_constr ("A", None))]
+
+let%test_unit "parse: let x = A 7" =
+  [%test_result: t]
+  (parse "let x = A 7")
+  ~expect:[S_let (P_ident "x", E_constr ("A", Some (E_int 7)))]
+
+let%test_unit "parse: let x = A (1, 2)" =
+  [%test_result: t]
+  (parse "let x = A (1, 2)")
+  ~expect:[S_let (P_ident "x", E_constr ("A", Some (E_tuple (E_int 1, E_int 2))))]
 
 let%test_unit "parse: let x = ()" =
   [%test_result: t]

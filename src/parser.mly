@@ -54,7 +54,8 @@ typ:
 expression:
   | i = INT { Parsed.E_int i }
   | i = IDENTIFIER { Parsed.E_ident i }
-  | v = VARIANT { Parsed.E_const v }
+  | v = VARIANT; e = expression { Parsed.E_constr (v, Some e) }
+  | v = VARIANT { Parsed.E_constr (v, None) }
   | xs = delimited(LEFT_PAREN, separated_list(COMMA, expression), RIGHT_PAREN) { mk_tuple xs }
   ;
 
