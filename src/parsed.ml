@@ -11,6 +11,8 @@ type expression =
 type pattern =
   P_int of int
 | P_ident of string
+| P_tuple of pattern * pattern
+| P_unit
 [@@deriving sexp]
 
 type typ =
