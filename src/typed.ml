@@ -74,6 +74,7 @@ let introduce_types parsed =
 
 type error =
   Unbound_value of string
+| Unification_failed
 exception Typed_exception of error
 
 module Ctx = struct
@@ -119,3 +120,52 @@ let derive_constraints typed =
         (ctx', (pt, et) :: cs @ cs')
     | _ -> failwith "not implemented" in
   fold_left ~init:(Ctx.empty, []) ~f:statement typed |> snd
+
+let rec substitute s t x =
+  match s with
+  | T_var v ->
+    begin match x with
+    | T_var v' when v = v' -> t
+    | T_tuple (a, b) -> T_tuple (substitute s t a, substitute s t b)
+    | T_fun (a, b) -> T_fun (substitute s t a, substitute s t b)
+    | _ -> x
+    end
+  | _ -> x
+
+let rec occurs s = function
+  | t when s = t -> true
+  | T_tuple (a, b) -> occurs s a || occurs s b
+  | T_fun (a, b) -> occurs s a || occurs s b
+  | _ -> false
+
+let rec unify = function
+  | [] -> ident
+  | (s, t) :: cs when s = t -> unify cs
+  | (T_var _ as s, t) :: cs when not (occurs s t) ->
+      let cs' = List.map ~f:(fun (a, b) -> (substitute s t a, substitute s t b)) cs in
+      Fn.compose (unify cs') (substitute s t)
+  | (s, (T_var _ as t)) :: cs when not (occurs t s) ->
+      let cs' = List.map ~f:(fun (a, b) -> (substitute t s a, substitute t s b)) cs in
+      Fn.compose (unify cs') (substitute t s)
+  | (T_fun (s1, s2), T_fun (t1, t2)) :: cs ->
+      unify @@ (s1, t1) :: (s2, t2) :: cs
+  | _ -> raise @@ Typed_exception Unification_failed
+
+let unify_and_substitute typed =
+  let open List in
+  let sub = derive_constraints typed |> unify in
+  let rec pattern = function
+    | P_int _ | P_unit as p -> p
+    | P_ident (id, t) -> P_ident (id, sub t)
+    | P_tuple (a, b) -> P_tuple (pattern a, pattern b) in
+  let rec expression = function
+    | E_int _ | E_unit | E_ident _ as e -> e
+    | E_apply (f, args, t) -> E_apply (expression f, args >>| expression, sub t)
+    | E_tuple (a, b) -> E_tuple (expression a, expression b)
+    | E_let (p, e, body) -> E_let (pattern p, expression e, expression body)
+    | E_fun (p, body) -> E_fun (pattern p, expression body)
+    | E_constr (c, oe) -> E_constr (c, Option.(oe >>| expression)) in
+  let statement = function
+    | S_let (p, e) -> S_let (pattern p, expression e)
+    | _ -> failwith "not implemented" in
+  typed >>| statement

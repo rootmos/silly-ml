@@ -12,7 +12,11 @@ let run s =
   let cs = Typed.derive_constraints typed in
   Typed.sexp_of_constrs cs |> Sexp.to_string |> print_endline;
 
+  let typed' = Typed.unify_and_substitute typed in
+  Typed.sexp_of_t typed' |> Sexp.to_string |> print_endline;
+
   print_newline ();;
 
-run "let f a = a";
+run "let x = 7";
+run "let f a = a;; let () = f ()";
 run "let f = 7;; let () = f () 2";
