@@ -6,6 +6,8 @@
 %token IN
 %token TYPE
 %token PIPE
+%token FUN
+%token ARROW
 %token ASTERISK
 %token DOUBLE_SEMICOLON
 %token COMMA
@@ -28,6 +30,11 @@ let rec mk_tuple_pattern = function
   | t :: [] -> t
   | t :: ts -> Parsed.P_tuple (t, mk_tuple_pattern ts)
 
+let rec mk_fun e = function
+  | [] -> failwith "nullary functions not supported"
+  | p :: [] -> Parsed.E_fun (p, e)
+  | p :: ps -> Parsed.E_fun (p, mk_fun e ps)
+
 %}
 
 %%
@@ -37,6 +44,7 @@ program:
   ;
 
 statement:
+  | LET; i = IDENTIFIER; ps = nonempty_list(pattern); EQUAL; e = expression { Parsed.S_let (Parsed.P_ident i, mk_fun e ps) }
   | LET; p = pattern; EQUAL; e = expression { Parsed.S_let (p, e) }
   | TYPE; i = IDENTIFIER; EQUAL; vs = variants { Parsed.S_type_decl (i, vs) }
   ;
@@ -59,7 +67,10 @@ expression:
   | v = VARIANT; e = expression { Parsed.E_constr (v, Some e) }
   | v = VARIANT { Parsed.E_constr (v, None) }
   | f = simple_expression; args = nonempty_list(simple_expression) { Parsed.E_apply (f, args) }
+  | LET; i = IDENTIFIER; ps = nonempty_list(pattern); EQUAL; e = expression IN; body = expression
+    { Parsed.E_let (Parsed.P_ident i, mk_fun e ps, body) }
   | LET; p = pattern; EQUAL; e = expression; IN body = expression { Parsed.E_let (p, e, body) }
+  | FUN; ps = nonempty_list(pattern); ARROW; e = expression { mk_fun e ps }
   | se = simple_expression { se }
   ;
 

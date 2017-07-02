@@ -15,6 +15,7 @@ type expression =
 | E_tuple of expression * expression
 | E_unit
 | E_let of pattern * expression * expression
+| E_fun of pattern * expression
 [@@deriving sexp]
 
 type typ =

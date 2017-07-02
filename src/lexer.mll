@@ -4,7 +4,7 @@
   exception Syntax_error of string
 }
 
-let identifier_initial_char = ['a'-'z' '_' '+' '-' '.']
+let identifier_initial_char = ['a'-'z' '_']
 let identifier_subsequent_char = identifier_initial_char | ['A'-'Z' '0'-'9']
 let identifier = identifier_initial_char identifier_subsequent_char*
 
@@ -20,6 +20,8 @@ rule read = parse
   | "type" { TYPE }
   | "of" { OF }
   | "in" { IN }
+  | "fun" { FUN }
+  | "->" { ARROW }
   | ";;" { DOUBLE_SEMICOLON }
   | '=' { EQUAL }
   | '(' { LEFT_PAREN }
