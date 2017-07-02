@@ -1,6 +1,5 @@
 open Parsed
-
-let parse s = Lexing.from_string s |> Parser.program Lexer.read
+open Parsed_helpers
 
 let%test_unit "parse empty string" =
   [%test_result: t]

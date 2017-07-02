@@ -7,6 +7,10 @@ SRC=$(shell git ls-files)
 test: parser_tests.native $(SRC)
 	./$< inline-test-runner test -verbose -stop-on-error
 
+.PHONY: snippet
+snippet: snippet.native $(SRC)
+	./$<
+
 .PHONY: clean
 clean:
 	$(OCB) -clean
