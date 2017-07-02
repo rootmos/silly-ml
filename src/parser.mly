@@ -44,7 +44,8 @@ program:
   ;
 
 statement:
-  | LET; i = IDENTIFIER; ps = nonempty_list(pattern); EQUAL; e = expression { Parsed.S_let (Parsed.P_ident i, mk_fun e ps) }
+  | LET; i = IDENTIFIER; ps = nonempty_list(pattern); EQUAL; e = expression
+    { Parsed.S_let (Parsed.P_ident i, mk_fun e ps) }
   | LET; p = pattern; EQUAL; e = expression { Parsed.S_let (p, e) }
   | TYPE; i = IDENTIFIER; EQUAL; vs = variants { Parsed.S_type_decl (i, vs) }
   ;
