@@ -51,11 +51,11 @@ let introduce_types parsed =
     let tv = T_var ("T" ^ string_of_int !counter) in
     counter := !counter + 1;
     tv in
-  let pattern = function
+  let rec pattern = function
     | P.P_int i -> P_int i
     | P.P_unit -> P_unit
     | P.P_ident id -> P_ident (id, fresh_typevar ())
-    | _ -> failwith "not implemented pattern" in
+    | P.P_tuple (a, b) -> P_tuple (pattern a, pattern b) in
   let rec expression = function
     | P.E_int i -> E_int i
     | P.E_unit -> E_unit
@@ -65,6 +65,7 @@ let introduce_types parsed =
         and args' = List.map ~f:expression args in
         E_apply (f', args', fresh_typevar ())
     | P.E_fun (p, e) -> E_fun (pattern p, expression e)
+    | P.E_tuple (a, b) -> E_tuple (expression a, expression b)
     | _ -> failwith "not implemented expression" in
   let statement = function
     | P.S_let (p, e) -> S_let (pattern p, expression e)
@@ -94,11 +95,14 @@ end
 
 let derive_constraints typed =
   let open List in
-  let pattern ctx = function
+  let rec pattern ctx = function
     | P_int _ -> (T_int, ctx)
     | P_unit -> (T_unit, ctx)
     | P_ident (id, t) -> (t, Ctx.bind ctx id t)
-    | _ -> failwith "not implemented" in
+    | P_tuple (a, b) ->
+        let (at, ctx') = pattern ctx a in
+        let (bt, ctx'') = pattern ctx' b in
+        (T_tuple (at, bt), ctx'') in
   let rec expression ctx = function
     | E_int _ -> (T_int, [])
     | E_unit -> (T_unit, [])
@@ -112,6 +116,10 @@ let derive_constraints typed =
         let (pt, ctx') = pattern ctx p in
         let (et, cs) = expression ctx' body in
         (T_fun (pt, et), cs)
+    | E_tuple (a, b) ->
+        let (at, cs) = expression ctx a in
+        let (bt, cs') = expression ctx b in
+        (T_tuple (at, bt), cs @ cs')
     | _ -> failwith "not implemented" in
   let statement (ctx, cs) = function
     | S_let (p, e) ->
@@ -148,6 +156,8 @@ let rec unify = function
       let cs' = List.map ~f:(fun (a, b) -> (substitute t s a, substitute t s b)) cs in
       Fn.compose (unify cs') (substitute t s)
   | (T_fun (s1, s2), T_fun (t1, t2)) :: cs ->
+      unify @@ (s1, t1) :: (s2, t2) :: cs
+  | (T_tuple (s1, s2), T_tuple (t1, t2)) :: cs ->
       unify @@ (s1, t1) :: (s2, t2) :: cs
   | _ -> raise @@ Typed_exception Unification_failed
 
