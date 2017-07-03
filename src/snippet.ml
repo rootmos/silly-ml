@@ -20,7 +20,15 @@ let run s =
 run "let x = 7";
 run "let x = let y = 7 in y";
 run "let (x, y) = (1, ())";
+run "let x = 7;; let (1, y) = (x, ());; let z = y";
 run "let f a = a;; let () = f ()";
 run "let kite a b = a;; let () = kite () 7";
-run "let kite a b = a;; let () = kite () 7;; let 5 = kite () 7";
-run "let f = 7;; let () = f () 2";
+
+run "type foo = A;; let x = A";
+run "type foo = A | B;; type bar = A;; let x = B;; let y = A";
+
+run "type foo = A of int;; let x = A 7";
+run "type foo = A of int * unit;; let x = A (7, ())";
+
+(*run "let f = 7;; let () = f () 2";*)
+(*run "let kite a b = a;; let () = kite () 7;; let 5 = kite () 7";*)

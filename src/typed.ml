@@ -3,6 +3,7 @@ module P = Parsed
 
 type typ =
   T_var of string
+| T_ident of string
 | T_tuple of typ * typ
 | T_int
 | T_unit
@@ -46,6 +47,7 @@ type constrs = (typ * typ) list
 [@@deriving sexp]
 
 let introduce_types parsed =
+  let open List in
   let counter = ref 0 in
   let fresh_typevar () =
     let tv = T_var ("T" ^ string_of_int !counter) in
@@ -62,21 +64,30 @@ let introduce_types parsed =
     | P.E_ident id -> E_ident id
     | P.E_apply (f, args) ->
         let f' = expression f
-        and args' = List.map ~f:expression args in
+        and args' = args >>| expression in
         E_apply (f', args', fresh_typevar ())
     | P.E_fun (p, e) -> E_fun (pattern p, expression e)
     | P.E_tuple (a, b) -> E_tuple (expression a, expression b)
     | P.E_let (p, e, body) -> E_let (pattern p, expression e, expression body)
-    | P.E_constr _ -> failwith "not implemented expression" in
+    | P.E_constr (t, oe) -> E_constr (t, Option.map ~f:expression oe) in
+  let rec typ = function
+    | P.T_ident id when id = "int" -> T_int
+    | P.T_ident id when id = "unit" -> T_unit
+    | P.T_ident id -> T_ident id
+    | P.T_tuple (a, b) -> T_tuple (typ a, typ b) in
   let statement = function
     | P.S_let (p, e) -> S_let (pattern p, expression e)
-    | _ -> failwith "not implemented statement" in
-  List.map ~f:statement parsed
+    | P.S_type_decl (t, decl) ->
+        let decl' = decl >>| fun (P.V_constr (c, ot)) -> V_constr (c, Option.map ~f:typ ot) in
+        S_type_decl (t, decl') in
+  parsed >>| statement
 
 
 type error =
   Unbound_value of string
+| Unbound_constructor of string
 | Unification_failed
+| Constructor_arity_mismatch of string
 exception Typed_exception of error
 
 module Ctx = struct
@@ -92,6 +103,20 @@ module Ctx = struct
     match List.Assoc.find ctx.bindings id with
     | Some t -> t
     | None -> raise (Typed_exception (Unbound_value id))
+
+  let bind_type ctx t decl = {
+    ctx with types = (t, decl) :: ctx.types
+  }
+
+  let lookup_constr ctx c =
+    let f = function
+      | V_constr (c', ot) when c = c' -> Some ot
+      | _ -> None in
+    let g (t, decl) =
+      Option.(List.find_map ~f decl >>| fun ot -> (T_ident t, ot)) in
+    match List.find_map ~f:g ctx.types with
+    | Some x -> x
+    | None -> raise @@ Typed_exception (Unbound_constructor c)
 end
 
 let derive_constraints typed =
@@ -126,13 +151,21 @@ let derive_constraints typed =
         let (et, cs) = expression ctx e
         and (bt, cs') = expression ctx' body in
         (et, (pt, et) :: cs @ cs')
-    | E_constr _ -> failwith "not implemented" in
+    | E_constr (c, oe) ->
+        let (t, ot) = Ctx.lookup_constr ctx c in
+        let cs = match (oe, ot) with
+        | (Some e, Some t) -> let (t', cs') = expression ctx e in (t, t') :: cs'
+        | (None, None) -> []
+        | _ -> raise @@ Typed_exception (Constructor_arity_mismatch c) in
+        (t, cs) in
   let statement (ctx, cs) = function
     | S_let (p, e) ->
         let (pt, ctx') = pattern ctx p in
         let (et, cs') = expression ctx' e in
         (ctx', (pt, et) :: cs @ cs')
-    | _ -> failwith "not implemented" in
+    | S_type_decl (t, decl) ->
+        let ctx' = Ctx.bind_type ctx t decl in
+        (ctx', cs) in
   fold_left ~init:(Ctx.empty, []) ~f:statement typed |> snd
 
 let rec substitute s t x =
@@ -183,5 +216,5 @@ let unify_and_substitute typed =
     | E_constr (c, oe) -> E_constr (c, Option.(oe >>| expression)) in
   let statement = function
     | S_let (p, e) -> S_let (pattern p, expression e)
-    | _ -> failwith "not implemented" in
+    | S_type_decl _ as x -> x in
   typed >>| statement
