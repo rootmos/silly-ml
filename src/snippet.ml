@@ -18,6 +18,7 @@ let run s =
   print_newline ();;
 
 run "let x = 7";
+run "let x = let y = 7 in y";
 run "let (x, y) = (1, ())";
 run "let f a = a;; let () = f ()";
 run "let kite a b = a;; let () = kite () 7";

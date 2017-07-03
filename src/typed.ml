@@ -66,7 +66,8 @@ let introduce_types parsed =
         E_apply (f', args', fresh_typevar ())
     | P.E_fun (p, e) -> E_fun (pattern p, expression e)
     | P.E_tuple (a, b) -> E_tuple (expression a, expression b)
-    | _ -> failwith "not implemented expression" in
+    | P.E_let (p, e, body) -> E_let (pattern p, expression e, expression body)
+    | P.E_constr _ -> failwith "not implemented expression" in
   let statement = function
     | P.S_let (p, e) -> S_let (pattern p, expression e)
     | _ -> failwith "not implemented statement" in
@@ -120,7 +121,12 @@ let derive_constraints typed =
         let (at, cs) = expression ctx a in
         let (bt, cs') = expression ctx b in
         (T_tuple (at, bt), cs @ cs')
-    | _ -> failwith "not implemented" in
+    | E_let (p, e, body) ->
+        let (pt, ctx') = pattern ctx p in
+        let (et, cs) = expression ctx e
+        and (bt, cs') = expression ctx' body in
+        (et, (pt, et) :: cs @ cs')
+    | E_constr _ -> failwith "not implemented" in
   let statement (ctx, cs) = function
     | S_let (p, e) ->
         let (pt, ctx') = pattern ctx p in
