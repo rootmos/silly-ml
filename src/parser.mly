@@ -44,7 +44,7 @@ program:
   ;
 
 statement:
-  | LET; i = IDENTIFIER; ps = nonempty_list(pattern); EQUAL; e = expression
+  | LET; i = IDENTIFIER; ps = nonempty_list(simple_pattern); EQUAL; e = expression
     { Parsed.S_let (Parsed.P_ident i, mk_fun e ps) }
   | LET; p = pattern; EQUAL; e = expression { Parsed.S_let (p, e) }
   | TYPE; i = IDENTIFIER; EQUAL; vs = variants { Parsed.S_type_decl (i, vs) }
@@ -68,10 +68,10 @@ expression:
   | v = VARIANT; e = expression { Parsed.E_constr (v, Some e) }
   | v = VARIANT { Parsed.E_constr (v, None) }
   | f = simple_expression; args = nonempty_list(simple_expression) { Parsed.E_apply (f, args) }
-  | LET; i = IDENTIFIER; ps = nonempty_list(pattern); EQUAL; e = expression IN; body = expression
+  | LET; i = IDENTIFIER; ps = nonempty_list(simple_pattern); EQUAL; e = expression IN; body = expression
     { Parsed.E_let (Parsed.P_ident i, mk_fun e ps, body) }
-  | LET; p = pattern; EQUAL; e = expression; IN body = expression { Parsed.E_let (p, e, body) }
-  | FUN; ps = nonempty_list(pattern); ARROW; e = expression { mk_fun e ps }
+  | LET; p = simple_pattern; EQUAL; e = expression; IN; body = expression { Parsed.E_let (p, e, body) }
+  | FUN; ps = nonempty_list(simple_pattern); ARROW; e = expression { mk_fun e ps }
   | se = simple_expression { se }
   ;
 
@@ -82,6 +82,12 @@ simple_expression:
   ;
 
 pattern:
+  | c = VARIANT; p = simple_pattern { Parsed.P_constr (c, Some p) }
+  | p = simple_pattern { p }
+  ;
+
+simple_pattern:
+  | c = VARIANT { Parsed.P_constr (c, None) }
   | i = INT { Parsed.P_int i }
   | i = IDENTIFIER { Parsed.P_ident i }
   | xs = delimited(LEFT_PAREN, separated_list(COMMA, pattern), RIGHT_PAREN) { mk_tuple_pattern xs }

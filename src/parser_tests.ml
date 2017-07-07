@@ -185,3 +185,23 @@ let%test_unit "parse: let f x y = z" =
   [%test_result: t]
   (parse "let f x y = z")
   ~expect:[S_let (P_ident "f", E_fun (P_ident "x", E_fun (P_ident "y", E_ident "z")))]
+
+let%test_unit "parse: let A = x" =
+  [%test_result: t]
+  (parse "let A = x")
+  ~expect:[S_let (P_constr ("A", None), E_ident "x")]
+
+let%test_unit "parse: let (A y) = x" =
+  [%test_result: t]
+  (parse "let (A y) = x")
+  ~expect:[S_let (P_constr ("A", Some (P_ident "y")), E_ident "x")]
+
+let%test_unit "parse: let () = let A = x" =
+  [%test_result: t]
+  (parse "let () = let A = x in ()")
+  ~expect:[S_let (P_unit, E_let (P_constr ("A", None), E_ident "x", E_unit))]
+
+let%test_unit "parse: let () = let (A y) = x" =
+  [%test_result: t]
+  (parse "let () = let (A y) = x in ()")
+  ~expect:[S_let (P_unit, E_let (P_constr ("A", Some (P_ident "y")), E_ident "x", E_unit))]
