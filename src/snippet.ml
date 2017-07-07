@@ -15,6 +15,9 @@ let run s =
   let typed' = Typed.unify_and_substitute typed in
   Typed.sexp_of_t typed' |> Sexp.to_string |> print_endline;
 
+  let lambda = Lambda.transform_to_lambda typed' in
+  Lambda.sexp_of_t lambda |> Sexp.to_string |> print_endline;
+
   print_newline ();;
 
 run "let x = 7";
