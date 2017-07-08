@@ -43,14 +43,18 @@ let rec mk_fun e = function
 %%
 
 program:
-  | ss = separated_list(DOUBLE_SEMICOLON, statement); EOF { ss }
+  | ss = list(terminated(statement, DOUBLE_SEMICOLON)); EOF { ss }
   ;
 
 statement:
   | LET; i = IDENTIFIER; ps = nonempty_list(simple_pattern); EQUAL; e = expression
     { Parsed.S_let (Parsed.P_ident i, mk_fun e ps) }
-  | LET; p = pattern; EQUAL; e = expression { Parsed.S_let (p, e) }
-  | TYPE; i = IDENTIFIER; EQUAL; vs = variants { Parsed.S_type_decl (i, vs) }
+  | LET; p = simple_pattern; EQUAL; e = expression
+    { Parsed.S_let (p, e) }
+  | TYPE; i = IDENTIFIER; EQUAL; vs = variants
+    { Parsed.S_type_decl (i, vs) }
+  | e = expression
+    { Parsed.S_expr e }
   ;
 
 variants:

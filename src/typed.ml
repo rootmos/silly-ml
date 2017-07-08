@@ -39,8 +39,9 @@ type type_decl = variant list
 [@@deriving sexp]
 
 type statement =
-    S_let of (pattern * expression)
-  | S_type_decl of (string * type_decl)
+  S_let of (pattern * expression)
+| S_type_decl of (string * type_decl)
+| S_expr of expression
 [@@deriving sexp]
 
 type t = statement list
@@ -87,7 +88,8 @@ let introduce_types parsed =
     | P.S_let (p, e) -> S_let (pattern p, expression e)
     | P.S_type_decl (t, decl) ->
         let decl' = decl >>| fun (P.V_constr (c, ot)) -> V_constr (c, Option.map ~f:typ ot) in
-        S_type_decl (t, decl') in
+        S_type_decl (t, decl')
+    | P.S_expr e -> S_expr (expression e) in
   parsed >>| statement
 
 
@@ -189,7 +191,10 @@ let derive_constraints typed =
         (ctx', (pt, et) :: cs @ cs' @ cs'')
     | S_type_decl (t, decl) ->
         let ctx' = Ctx.bind_type ctx t decl in
-        (ctx', cs) in
+        (ctx', cs)
+    | S_expr e ->
+        let (_, cs) = expression ctx e in
+        (ctx, cs) in
   fold_left ~init:(Ctx.empty, []) ~f:statement typed |> snd
 
 let rec substitute s t x =
@@ -245,5 +250,6 @@ let unify_and_substitute typed =
         E_match (expression e, cases', sub t) in
   let statement = function
     | S_let (p, e) -> S_let (pattern p, expression e)
-    | S_type_decl _ as x -> x in
+    | S_type_decl _ as x -> x
+    | S_expr e -> S_expr (expression e) in
   typed >>| statement

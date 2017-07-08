@@ -34,8 +34,9 @@ type type_decl = variant list
 [@@deriving sexp]
 
 type statement =
-    S_let of (pattern * expression)
-  | S_type_decl of (string * type_decl)
+  S_let of (pattern * expression)
+| S_type_decl of (string * type_decl)
+| S_expr of expression
 [@@deriving sexp]
 
 type t = statement list

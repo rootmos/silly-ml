@@ -125,5 +125,8 @@ let transform_to_lambda typed =
     | (T.S_let (p, e)) :: es ->
         let (p', ctx') = pattern ctx p in
         let e' = expression ctx' e in
-        E_let (p', e', go ctx' es) in
+        E_let (p', e', go ctx' es)
+    | (T.S_expr e) :: [] -> expression ctx e
+    | (T.S_expr e) :: es ->
+        let _ = expression ctx e in go ctx es in
   go Ctx.empty typed
