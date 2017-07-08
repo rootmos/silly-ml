@@ -14,6 +14,7 @@ let compare_value = Pervasives.compare
 type error =
   Unbound_value of string
 | Match_error
+| Unreachable
 exception Interpret_exception of error
 
 module Ctx = struct
@@ -57,6 +58,7 @@ let rec reduce ctx = function
       let (body', ctx''') = reduce ctx'' body in
       reduce ctx''' @@ L.E_apply (body', args)
   | L.E_apply (v, []) -> (v, ctx)
+  | L.E_apply (_, _ :: _) -> raise @@ Interpret_exception Unreachable
   | L.E_switch (L.V_ident id, cases) ->
       reduce ctx @@ L.E_switch (Ctx.lookup ctx id, cases)
   | L.E_switch (v, (p, body) :: cs) ->
@@ -69,7 +71,6 @@ let rec reduce ctx = function
       end
   | L.E_switch (v, []) ->
       raise @@ Interpret_exception Match_error
-  | _ -> failwith "not implemented!"
 
 let rec reduce_value ctx = function
   | L.V_int i -> V_int i
