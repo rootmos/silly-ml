@@ -80,16 +80,9 @@ let rec reduce_value ctx = function
   | L.V_fun _ -> V_fun
   | L.V_tag (t, v) -> V_tag (t, reduce_value ctx v)
 
-let interpret lambda =
-  let (v, ctx) = reduce Ctx.empty lambda in
-  reduce_value ctx v
-
-let eval s =
-  let parsed = Parsed_helpers.parse s in
-  let typed = Typed.introduce_types parsed in
-  let typed' = Typed.unify_and_substitute typed in
-  let lambda = Lambda.transform_to_lambda typed' in
-  interpret lambda
+let interpret ?ctx:(ctx=Ctx.empty) lambda =
+  let (v, ctx') = reduce ctx lambda in
+  (reduce_value ctx' v, ctx')
 
 let rec format_value = function
   | V_int i -> string_of_int i

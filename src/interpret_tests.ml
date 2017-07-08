@@ -1,4 +1,5 @@
 open Interpret
+open Eval
 open Core_kernel.Std
 
 let%test_unit "eval empty string" =
@@ -100,3 +101,9 @@ let%test_unit "eval match ((1, 2), 3) with ((1, a), b) -> (a, b) | _ -> (1, 2);;
   [%test_result: value]
   (eval "match ((1, 2), 3) with ((1, a), b) -> (a, b) | _ -> (1, 2);;")
   ~expect:(V_tuple (V_int 2, V_int 3))
+
+let%test_unit "eval let x = 7;; and then x;;" =
+  [%test_result: value]
+  (let (_, ctx) = step Ctx.empty "let x = 7;;" in
+  step ctx "x;;" |> fst)
+  ~expect:(V_int 7)

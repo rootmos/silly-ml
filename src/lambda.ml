@@ -33,38 +33,41 @@ type error =
 | Unbound_constructor of string
 exception Lambda_exception of error
 
-let transform_to_lambda typed =
-  let counter = ref 0 in
-  let fresh_identifier () =
-    let id = "L" ^ string_of_int !counter in
-    counter := !counter + 1; id in
-  let module Ctx = struct
-    type t = {
-      identifiers: (string * string) list;
-      constructors: (string * int) list
-    }
+let counter = ref 0
 
-    let empty = { identifiers = []; constructors = [] }
+let fresh_identifier () =
+  let id = "L" ^ string_of_int !counter in
+  counter := !counter + 1; id
 
-    let new_identifier ctx id =
-      let id' = fresh_identifier () in
-      let ctx' = { ctx with identifiers = (id, id') :: ctx.identifiers } in
-      (id', ctx')
+module Ctx = struct
+  type t = {
+    identifiers: (string * string) list;
+    constructors: (string * int) list
+  }
 
-    let lookup_identifier ctx id =
-      match List.Assoc.find ctx.identifiers id with
-      | Some id' -> id'
-      | None -> raise @@ Lambda_exception (Unbound_identifier id)
+  let empty = { identifiers = []; constructors = [] }
 
-    let bind_type_decl ctx type_decl =
-      let cs = List.mapi ~f:(fun i (T.V_constr (c, _)) -> (c, i)) type_decl in
-      { ctx with constructors = cs @ ctx.constructors }
+  let new_identifier ctx id =
+    let id' = fresh_identifier () in
+    let ctx' = { ctx with identifiers = (id, id') :: ctx.identifiers } in
+    (id', ctx')
 
-    let lookup_constructor ctx c =
-      match List.Assoc.find ctx.constructors c with
-      | Some t -> t
-      | None -> raise @@ Lambda_exception (Unbound_constructor c)
-  end in
+  let lookup_identifier ctx id =
+    match List.Assoc.find ctx.identifiers id with
+    | Some id' -> id'
+    | None -> raise @@ Lambda_exception (Unbound_identifier id)
+
+  let bind_type_decl ctx type_decl =
+    let cs = List.mapi ~f:(fun i (T.V_constr (c, _)) -> (c, i)) type_decl in
+    { ctx with constructors = cs @ ctx.constructors }
+
+  let lookup_constructor ctx c =
+    match List.Assoc.find ctx.constructors c with
+    | Some t -> t
+    | None -> raise @@ Lambda_exception (Unbound_constructor c)
+end
+
+let transform_to_lambda ?ctx:(ctx=Ctx.empty) typed =
   let rec pattern ctx = function
     | T.P_int i -> (P_int i, ctx)
     | T.P_unit -> (P_unit, ctx)
@@ -120,12 +123,13 @@ let transform_to_lambda typed =
           (p', body')) in
         E_let (P_ident el, e', E_switch (V_ident el, cases')) in
   let rec go ctx = function
-    | [] -> E_value V_unit
+    | [] -> (E_value V_unit, ctx)
     | (T.S_type_decl (_, td)) :: es -> go (Ctx.bind_type_decl ctx td) es
     | (T.S_let (p, e)) :: es ->
         let (p', ctx') = pattern ctx p in
         let e' = expression ctx' e in
-        E_let (p', e', go ctx' es)
-    | (T.S_expr e) :: [] -> expression ctx e
+        let (e'', ctx'') = go ctx' es in
+        (E_let (p', e', e''), ctx'')
+    | (T.S_expr e) :: [] -> (expression ctx e, ctx)
     | (T.S_expr e) :: es -> failwith "discarding value" in
-  go Ctx.empty typed
+  go ctx typed

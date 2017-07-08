@@ -129,7 +129,7 @@ module Ctx = struct
     | None -> raise @@ Typed_exception (Unbound_constructor c)
 end
 
-let derive_constraints typed =
+let derive_constraints ?ctx:(ctx=Ctx.empty) typed =
   let open List in
   let rec pattern ctx = function
     | P_int _ -> (T_int, ctx, [])
@@ -195,7 +195,7 @@ let derive_constraints typed =
     | S_expr e ->
         let (_, cs) = expression ctx e in
         (ctx, cs) in
-  fold_left ~init:(Ctx.empty, []) ~f:statement typed |> snd
+  fold_left ~init:(ctx, []) ~f:statement typed
 
 let rec substitute s t x =
   match s with
@@ -229,9 +229,10 @@ let rec unify = function
       unify @@ (s1, t1) :: (s2, t2) :: cs
   | _ -> raise @@ Typed_exception Unification_failed
 
-let unify_and_substitute typed =
+let unify_and_substitute ?ctx:(ctx=Ctx.empty) typed =
   let open List in
-  let sub = derive_constraints typed |> unify in
+  let (ctx, cs) = derive_constraints ~ctx typed in
+  let sub = unify cs in
   let rec pattern = function
     | P_int _ | P_unit as p -> p
     | P_wildcard t -> P_wildcard (sub t)
@@ -252,4 +253,4 @@ let unify_and_substitute typed =
     | S_let (p, e) -> S_let (pattern p, expression e)
     | S_type_decl _ as x -> x
     | S_expr e -> S_expr (expression e) in
-  typed >>| statement
+  (typed >>| statement, ctx)
