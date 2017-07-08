@@ -28,6 +28,7 @@ type expression =
 | E_unit
 | E_let of pattern * expression * expression
 | E_fun of pattern * expression
+| E_match of expression * (pattern * expression) list * typ
 [@@deriving sexp]
 
 type variant =
@@ -74,7 +75,9 @@ let introduce_types parsed =
     | P.E_tuple (a, b) -> E_tuple (expression a, expression b)
     | P.E_let (p, e, body) -> E_let (pattern p, expression e, expression body)
     | P.E_constr (t, oe) -> E_constr (t, Option.map ~f:expression oe)
-    | P.E_match (_, _) -> failwith "not implemented" in
+    | P.E_match (e, cases) ->
+        let cases' = cases >>| fun (p, e) -> (pattern p, expression e) in
+        E_match (expression e, cases', fresh_typevar ()) in
   let rec typ = function
     | P.T_ident id when id = "int" -> T_int
     | P.T_ident id when id = "unit" -> T_unit
@@ -165,6 +168,13 @@ let derive_constraints typed =
         let (et, cs') = expression ctx e
         and (bt, cs'') = expression ctx' body in
         (et, (pt, et) :: cs @ cs' @ cs'')
+    | E_match (e, cases, t) ->
+        let (et, cs) = expression ctx e in
+        let cs' = fold_left ~init:[] ~f:(fun acc (p, body) ->
+          let (pt, ctx', xs) = pattern ctx p in
+          let (bodyt, ys) = expression ctx' body in
+          (et, pt) :: (bodyt, t) :: xs @ ys @ acc) cases in
+        (t, cs @ cs')
     | E_constr (c, oe) ->
         let (t, ot) = Ctx.lookup_constr ctx c in
         let cs = match (oe, ot) with
@@ -218,7 +228,8 @@ let unify_and_substitute typed =
   let open List in
   let sub = derive_constraints typed |> unify in
   let rec pattern = function
-    | P_int _ | P_unit | P_wildcard _ as p -> p
+    | P_int _ | P_unit as p -> p
+    | P_wildcard t -> P_wildcard (sub t)
     | P_ident (id, t) -> P_ident (id, sub t)
     | P_tuple (a, b) -> P_tuple (pattern a, pattern b)
     | P_constr (c, op) -> P_constr (c, Option.map ~f:pattern op) in
@@ -228,7 +239,10 @@ let unify_and_substitute typed =
     | E_tuple (a, b) -> E_tuple (expression a, expression b)
     | E_let (p, e, body) -> E_let (pattern p, expression e, expression body)
     | E_fun (p, body) -> E_fun (pattern p, expression body)
-    | E_constr (c, oe) -> E_constr (c, Option.(oe >>| expression)) in
+    | E_constr (c, oe) -> E_constr (c, Option.(oe >>| expression))
+    | E_match (e, cases, t) ->
+        let cases' = cases >>| fun (p, body) -> (pattern p, expression body) in
+        E_match (expression e, cases', sub t) in
   let statement = function
     | S_let (p, e) -> S_let (pattern p, expression e)
     | S_type_decl _ as x -> x in

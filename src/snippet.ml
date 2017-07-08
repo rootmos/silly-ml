@@ -38,5 +38,9 @@ run "let _ = 7";
 run "type foo = A;; let A = A";
 run "type foo = A of int;; let A i = A 7";
 
+run "let () = match 7 with 0 -> () | _ -> ()";
+
+run "let _ = match ((1, 2), 3) with ((1, a), b) -> (a, b) | _ -> (1, 2)";
+
 (*run "let f = 7;; let () = f () 2";*)
 (*run "let kite a b = a;; let () = kite () 7;; let 5 = kite () 7";*)

@@ -19,6 +19,7 @@ type expression =
 | E_let of pattern * expression * expression
 | E_fun of pattern * expression
 | E_tag of int * expression
+| E_switch of expression * (pattern * expression) list
 [@@deriving sexp]
 
 type t = expression
@@ -100,7 +101,14 @@ let transform_to_lambda typed =
     | T.E_constr (c, None) ->
         E_int (Ctx.lookup_constructor ctx c)
     | T.E_constr (c, Some e) ->
-        E_tag (Ctx.lookup_constructor ctx c, expression ctx e) in
+        E_tag (Ctx.lookup_constructor ctx c, expression ctx e)
+    | T.E_match (e, cases, _) ->
+        let e' = expression ctx e in
+        let cases' = List.map cases ~f:(fun (p, body) ->
+          let (p', ctx') = pattern ctx p in
+          let body' = expression ctx' body in
+          (p', body')) in
+        E_switch (e', cases') in
   let rec go ctx = function
     | [] -> E_unit
     | (T.S_type_decl (_, td)) :: es -> go (Ctx.bind_type_decl ctx td) es
