@@ -1,4 +1,5 @@
 open Core_kernel.Std
+open Printf
 module L = Lambda
 
 type value =
@@ -16,6 +17,11 @@ type error =
 | Match_error
 | Unreachable
 exception Interpret_exception of error
+
+let format_error = function
+ | Unbound_value id -> sprintf "unbound value %s" id
+ | Match_error -> "match error"
+ | Unreachable -> "interpreter whoopsie"
 
 module Ctx = struct
   type t = {

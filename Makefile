@@ -3,6 +3,10 @@ OCB := ocamlbuild $(OCB_FLAGS)
 
 SRC=$(shell git ls-files)
 
+.PHONY: repl
+repl: repl.native
+	rlwrap ./$<
+
 .PHONY: test
 test: parser_tests interpret_tests
 

@@ -22,3 +22,22 @@ let step ctx s =
   (v, { typed_ctx = typed_ctx'; lambda_ctx = lambda_ctx'; interpret_ctx = interpret_ctx' })
 
 let eval s = step Ctx.empty s |> fst
+
+let rec repl ?ctx:(ctx=Ctx.empty) () =
+  print_string "> ";
+  try
+    let s = read_line () in
+    let (v, ctx') = step ctx s in
+    Interpret.format_value v |> print_endline;
+    repl ~ctx:ctx' ()
+  with
+  | Interpret.Interpret_exception error ->
+      Printf.printf "interpreter error: %s\n" (Interpret.format_error error);
+      repl ~ctx ()
+  | Lambda.Lambda_exception error ->
+      Printf.printf "lambda error: %s\n" (Lambda.format_error error);
+      repl ~ctx ()
+  | Typed.Typed_exception error ->
+      Printf.printf "typed error: %s\n" (Typed.format_error error);
+      repl ~ctx ()
+  | End_of_file -> ()

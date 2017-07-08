@@ -100,6 +100,12 @@ type error =
 | Constructor_arity_mismatch of string
 exception Typed_exception of error
 
+let format_error = function
+  | Unbound_value id -> sprintf "unbound value %s" id
+  | Unbound_constructor c -> sprintf "unbound constructor %s" c
+  | Unification_failed -> "unification failed"
+  | Constructor_arity_mismatch c -> sprintf "arity mismatch when applying constructor %s" c
+
 module Ctx = struct
   type t = {
     types: (string * type_decl) list;

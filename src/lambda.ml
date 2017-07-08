@@ -33,6 +33,10 @@ type error =
 | Unbound_constructor of string
 exception Lambda_exception of error
 
+let format_error = function
+ | Unbound_identifier id -> sprintf "unbound identifier %s" id
+ | Unbound_constructor c -> sprintf "unbound constructor %s" c
+
 let counter = ref 0
 
 let fresh_identifier () =
