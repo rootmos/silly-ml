@@ -16,7 +16,6 @@ type expression =
 | E_tuple of expression * expression
 | E_ident of string
 | E_apply of expression * expression list
-| E_constr of string * expression option
 | E_let of pattern * expression * expression
 | E_fun of pattern * expression
 | E_tag of int * expression
