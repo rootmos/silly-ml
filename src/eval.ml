@@ -1,3 +1,5 @@
+open Core_kernel.Std
+
 module Ctx = struct
   type t = {
     typed_ctx: Typed.Ctx.t;
@@ -26,15 +28,19 @@ let eval s = step Ctx.empty s |> fun (x, _, _) -> x
 let rec repl ?ctx:(ctx=Ctx.empty) () =
   let open Ctx in
 
-  let rec pretty v t =
+  let rec pretty ?wrap:(wrap=false) v t =
     match (v ,t) with
     | (Interpret.V_int i, Typed.T_ident id) ->
         let td = Typed.Ctx.lookup_type ctx.typed_ctx id in
         Lambda.Ctx.reconstruct_constructor td i
-    | (Interpret.V_tag (i, v), Typed.T_ident id) ->
+    | (Interpret.V_tag (i, v'), Typed.T_ident id) ->
         let td = Typed.Ctx.lookup_type ctx.typed_ctx id in
         let c = Lambda.Ctx.reconstruct_constructor td i in
-        Printf.sprintf "%s %s" c (Interpret.format_value v)
+        begin match List.Assoc.find (List.(td >>| fun (Typed.V_constr x) -> x)) c with
+        | Some (Some t) when wrap -> Printf.sprintf "(%s %s)" c (pretty ~wrap:true v' t)
+        | Some (Some t)           -> Printf.sprintf "%s %s" c (pretty ~wrap:true v' t)
+        | _ -> failwith "eval whoopsie"
+        end
     | (v, _) -> Interpret.format_value v in
 
   print_string "> ";
