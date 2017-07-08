@@ -9,9 +9,11 @@ type value =
 | V_tag of int * value
 [@@deriving sexp]
 
+let compare_value = Pervasives.compare
+
 type error =
   Unbound_value of string
-| Matching_error
+| Match_error
 exception Interpret_exception of error
 
 module Ctx = struct
@@ -36,7 +38,10 @@ let rec pattern_match ctx p v =
       let ctx' = pattern_match ctx a x in
       pattern_match ctx' b y
   | (L.P_int i, L.V_int i') when i = i' -> ctx
-  | _ -> raise @@ Interpret_exception Matching_error
+  | (L.P_unit, L.V_unit) -> ctx
+  | (L.P_wildcard, _) -> ctx
+  | (L.P_tag (t, p), L.V_tag (t', v)) -> pattern_match ctx p v
+  | _ -> raise @@ Interpret_exception Match_error
 
 let rec reduce ctx = function
   | L.E_value v -> (v, ctx)
@@ -44,6 +49,26 @@ let rec reduce ctx = function
       let (v, ctx') = reduce ctx e in
       let ctx'' = pattern_match ctx' p v in
       reduce ctx'' body
+  | L.E_apply (L.V_ident id, args) ->
+      reduce ctx @@ L.E_apply (Ctx.lookup ctx id, args)
+  | L.E_apply (L.V_fun (p, body), a :: args) ->
+      let (a', ctx') = reduce ctx a in
+      let ctx'' = pattern_match ctx' p a' in
+      let (body', ctx''') = reduce ctx'' body in
+      reduce ctx''' @@ L.E_apply (body', args)
+  | L.E_apply (v, []) -> (v, ctx)
+  | L.E_switch (L.V_ident id, cases) ->
+      reduce ctx @@ L.E_switch (Ctx.lookup ctx id, cases)
+  | L.E_switch (v, (p, body) :: cs) ->
+      begin try
+        let ctx' = pattern_match ctx p v in
+        reduce ctx' body
+      with
+        | Interpret_exception Match_error ->
+            reduce ctx @@ L.E_switch (v, cs)
+      end
+  | L.E_switch (v, []) ->
+      raise @@ Interpret_exception Match_error
   | _ -> failwith "not implemented!"
 
 let rec reduce_value ctx = function
@@ -57,3 +82,17 @@ let rec reduce_value ctx = function
 let interpret lambda =
   let (v, ctx) = reduce Ctx.empty lambda in
   reduce_value ctx v
+
+let eval s =
+  let parsed = Parsed_helpers.parse s in
+  let typed = Typed.introduce_types parsed in
+  let typed' = Typed.unify_and_substitute typed in
+  let lambda = Lambda.transform_to_lambda typed' in
+  interpret lambda
+
+let rec format_value = function
+  | V_int i -> string_of_int i
+  | V_unit -> "()"
+  | V_tuple (a, b) -> "(" ^ format_value a ^ "," ^ format_value b ^ ")"
+  | V_fun -> "<fun>"
+  | V_tag (t, v) -> string_of_int t ^ "#" ^ format_value v

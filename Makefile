@@ -4,8 +4,10 @@ OCB := ocamlbuild $(OCB_FLAGS)
 SRC=$(shell git ls-files)
 
 .PHONY: test
-test: parser_tests.native $(SRC)
-	./$< inline-test-runner test -verbose -stop-on-error
+test: parser_tests interpret_tests
+
+%_tests: %_tests.native
+	./$< inline-test-runner test # verbose -stop-on-error
 
 .PHONY: snippet
 snippet: snippet.native $(SRC)
