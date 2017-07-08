@@ -237,6 +237,7 @@ let rec unify = function
 
 let unify_and_substitute ?ctx:(ctx=Ctx.empty) typed =
   let open List in
+  let open Ctx in
   let (ctx, cs) = derive_constraints ~ctx typed in
   let sub = unify cs in
   let rec pattern = function
@@ -259,4 +260,5 @@ let unify_and_substitute ?ctx:(ctx=Ctx.empty) typed =
     | S_let (p, e) -> S_let (pattern p, expression e)
     | S_type_decl _ as x -> x
     | S_expr e -> S_expr (expression e) in
-  (typed >>| statement, ctx)
+  let ctx' = { ctx with bindings = ctx.bindings >>| fun (id, t) -> (id, sub t) } in
+  (typed >>| statement, ctx')
