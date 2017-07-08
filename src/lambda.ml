@@ -6,6 +6,7 @@ type pattern =
 | P_ident of string
 | P_tuple of pattern * pattern
 | P_unit
+| P_wildcard
 [@@deriving sexp]
 
 type expression =
@@ -63,6 +64,7 @@ let transform_to_lambda typed =
   let rec pattern ctx = function
     | T.P_int i -> (P_int i, ctx)
     | T.P_unit -> (P_unit, ctx)
+    | T.P_wildcard _ -> (P_wildcard, ctx)
     | T.P_ident (id, _) ->
         let (id', ctx') = Ctx.new_identifier ctx id in
         (P_ident id', ctx')

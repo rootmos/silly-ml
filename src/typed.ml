@@ -15,6 +15,7 @@ type pattern =
 | P_ident of string * typ
 | P_tuple of pattern * pattern
 | P_unit
+| P_wildcard of typ
 [@@deriving sexp]
 
 type expression =
@@ -57,7 +58,8 @@ let introduce_types parsed =
     | P.P_int i -> P_int i
     | P.P_unit -> P_unit
     | P.P_ident id -> P_ident (id, fresh_typevar ())
-    | P.P_tuple (a, b) -> P_tuple (pattern a, pattern b) in
+    | P.P_tuple (a, b) -> P_tuple (pattern a, pattern b)
+    | P.P_wildcard -> P_wildcard (fresh_typevar ()) in
   let rec expression = function
     | P.E_int i -> E_int i
     | P.E_unit -> E_unit
@@ -69,7 +71,8 @@ let introduce_types parsed =
     | P.E_fun (p, e) -> E_fun (pattern p, expression e)
     | P.E_tuple (a, b) -> E_tuple (expression a, expression b)
     | P.E_let (p, e, body) -> E_let (pattern p, expression e, expression body)
-    | P.E_constr (t, oe) -> E_constr (t, Option.map ~f:expression oe) in
+    | P.E_constr (t, oe) -> E_constr (t, Option.map ~f:expression oe)
+    | P.E_match (_, _) -> failwith "not implemented" in
   let rec typ = function
     | P.T_ident id when id = "int" -> T_int
     | P.T_ident id when id = "unit" -> T_unit
@@ -125,6 +128,7 @@ let derive_constraints typed =
     | P_int _ -> (T_int, ctx)
     | P_unit -> (T_unit, ctx)
     | P_ident (id, t) -> (t, Ctx.bind ctx id t)
+    | P_wildcard t -> (t, ctx)
     | P_tuple (a, b) ->
         let (at, ctx') = pattern ctx a in
         let (bt, ctx'') = pattern ctx' b in
@@ -204,7 +208,7 @@ let unify_and_substitute typed =
   let open List in
   let sub = derive_constraints typed |> unify in
   let rec pattern = function
-    | P_int _ | P_unit as p -> p
+    | P_int _ | P_unit | P_wildcard _ as p -> p
     | P_ident (id, t) -> P_ident (id, sub t)
     | P_tuple (a, b) -> P_tuple (pattern a, pattern b) in
   let rec expression = function
