@@ -31,6 +31,9 @@ let rec repl ?ctx:(ctx=Ctx.empty) () =
     Interpret.format_value v |> print_endline;
     repl ~ctx:ctx' ()
   with
+  | Parsed_helpers.Parser_helpers_exception ->
+      Printf.printf "parsing error\n";
+      repl ~ctx ()
   | Interpret.Interpret_exception error ->
       Printf.printf "interpreter error: %s\n" (Interpret.format_error error);
       repl ~ctx ()
