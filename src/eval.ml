@@ -46,4 +46,6 @@ let rec repl ?ctx:(ctx=Ctx.empty) () =
   | Typed.Typed_exception error ->
       Printf.printf "typed error: %s\n" (Typed.format_error error);
       repl ~ctx ()
+  | Sys.Break ->
+      print_newline (); repl ~ctx ()
   | End_of_file -> ()
