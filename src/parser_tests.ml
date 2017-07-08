@@ -205,3 +205,18 @@ let%test_unit "parse: let () = let (A y) = x" =
   [%test_result: t]
   (parse "let () = let (A y) = x in ()")
   ~expect:[S_let (P_unit, E_let (P_constr ("A", Some (P_ident "y")), E_ident "x", E_unit))]
+
+let%test_unit "parse: let () = match x with A -> y | B 7 -> z" =
+  [%test_result: t]
+  (parse "let () = match x with A -> a | B _ -> b | 1 -> c | () -> d | _ -> e")
+  ~expect:[S_let (P_unit, E_match (E_ident "x", [
+    (P_constr ("A", None), E_ident "a");
+    (P_constr ("B", Some (P_wildcard)), E_ident "b");
+    (P_int 1, E_ident "c");
+    (P_unit, E_ident "d");
+    (P_wildcard, E_ident "e")]))]
+
+let%test_unit "parse: let _yo = match x with | () -> y" =
+  [%test_result: t]
+  (parse "let _yo = match x with | () -> y")
+  ~expect:[S_let (P_wildcard, E_match (E_ident "x", [(P_unit, E_ident "y")]))]

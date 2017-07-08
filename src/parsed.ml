@@ -6,6 +6,7 @@ type pattern =
 | P_tuple of pattern * pattern
 | P_constr of string * pattern option
 | P_unit
+| P_wildcard
 [@@deriving sexp]
 
 type expression =
@@ -17,6 +18,7 @@ type expression =
 | E_unit
 | E_let of pattern * expression * expression
 | E_fun of pattern * expression
+| E_match of expression * (pattern * expression) list
 [@@deriving sexp]
 
 type typ =

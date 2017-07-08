@@ -11,6 +11,9 @@
 %token ASTERISK
 %token DOUBLE_SEMICOLON
 %token COMMA
+%token MATCH
+%token WITH
+%token <string> WILDCARD
 %token <string> IDENTIFIER
 %token <string> VARIANT
 %token <int> INT
@@ -65,13 +68,18 @@ typ:
   ;
 
 expression:
-  | v = VARIANT; e = expression { Parsed.E_constr (v, Some e) }
+  | wo_match = expression_without_match { wo_match }
+  | m = match_with { m }
+  ;
+
+expression_without_match:
+  | v = VARIANT; e = expression_without_match { Parsed.E_constr (v, Some e) }
   | v = VARIANT { Parsed.E_constr (v, None) }
   | f = simple_expression; args = nonempty_list(simple_expression) { Parsed.E_apply (f, args) }
-  | LET; i = IDENTIFIER; ps = nonempty_list(simple_pattern); EQUAL; e = expression IN; body = expression
+  | LET; i = IDENTIFIER; ps = nonempty_list(simple_pattern); EQUAL; e = expression IN; body = expression_without_match
     { Parsed.E_let (Parsed.P_ident i, mk_fun e ps, body) }
-  | LET; p = simple_pattern; EQUAL; e = expression; IN; body = expression { Parsed.E_let (p, e, body) }
-  | FUN; ps = nonempty_list(simple_pattern); ARROW; e = expression { mk_fun e ps }
+  | LET; p = simple_pattern; EQUAL; e = expression; IN; body = expression_without_match { Parsed.E_let (p, e, body) }
+  | FUN; ps = nonempty_list(simple_pattern); ARROW; e = expression_without_match { mk_fun e ps }
   | se = simple_expression { se }
   ;
 
@@ -89,6 +97,15 @@ pattern:
 simple_pattern:
   | c = VARIANT { Parsed.P_constr (c, None) }
   | i = INT { Parsed.P_int i }
+  | _ = WILDCARD { Parsed.P_wildcard }
   | i = IDENTIFIER { Parsed.P_ident i }
   | xs = delimited(LEFT_PAREN, separated_list(COMMA, pattern), RIGHT_PAREN) { mk_tuple_pattern xs }
+  ;
+
+match_with:
+  | MATCH; x = expression; WITH; PIPE?; cs = separated_nonempty_list(PIPE, match_case) { Parsed.E_match (x, cs) }
+  ;
+
+match_case:
+  | p = pattern; ARROW; e = expression_without_match { (p, e) }
   ;
