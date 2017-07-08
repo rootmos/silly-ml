@@ -18,6 +18,9 @@ let run s =
   let lambda = Lambda.transform_to_lambda typed' in
   Lambda.sexp_of_t lambda |> Sexp.to_string |> print_endline;
 
+  let x = Interpret.interpret lambda in
+  Interpret.sexp_of_value x |> Sexp.to_string |> print_endline;
+
   print_newline ();;
 
 run "let x = 7";
