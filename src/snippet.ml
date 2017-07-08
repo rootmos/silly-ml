@@ -35,5 +35,8 @@ run "type foo = A of int * unit;; let x = A (7, ())";
 
 run "let _ = 7";
 
+run "type foo = A;; let A = A";
+run "type foo = A of int;; let A i = A 7";
+
 (*run "let f = 7;; let () = f () 2";*)
 (*run "let kite a b = a;; let () = kite () 7;; let 5 = kite () 7";*)

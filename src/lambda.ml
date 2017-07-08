@@ -7,6 +7,7 @@ type pattern =
 | P_tuple of pattern * pattern
 | P_unit
 | P_wildcard
+| P_tag of int * pattern
 [@@deriving sexp]
 
 type expression =
@@ -71,7 +72,11 @@ let transform_to_lambda typed =
     | T.P_tuple (a, b) ->
         let (a', ctx') = pattern ctx a in
         let (b', ctx'') = pattern ctx' b in
-        (P_tuple (a', b'), ctx'') in
+        (P_tuple (a', b'), ctx'')
+    | T.P_constr (c, None) -> (P_int (Ctx.lookup_constructor ctx c), ctx)
+    | T.P_constr (c, Some p) ->
+        let (p', ctx') = pattern ctx p in
+        (P_tag (Ctx.lookup_constructor ctx' c, p'), ctx') in
   let rec expression ctx = function
     | T.E_int i -> E_int i
     | T.E_unit -> E_unit

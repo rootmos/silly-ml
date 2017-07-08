@@ -16,6 +16,7 @@ type pattern =
 | P_tuple of pattern * pattern
 | P_unit
 | P_wildcard of typ
+| P_constr of string * pattern option
 [@@deriving sexp]
 
 type expression =
@@ -59,7 +60,8 @@ let introduce_types parsed =
     | P.P_unit -> P_unit
     | P.P_ident id -> P_ident (id, fresh_typevar ())
     | P.P_tuple (a, b) -> P_tuple (pattern a, pattern b)
-    | P.P_wildcard -> P_wildcard (fresh_typevar ()) in
+    | P.P_wildcard -> P_wildcard (fresh_typevar ())
+    | P.P_constr (c, op) -> P_constr (c, Option.map ~f:pattern op) in
   let rec expression = function
     | P.E_int i -> E_int i
     | P.E_unit -> E_unit
@@ -125,14 +127,22 @@ end
 let derive_constraints typed =
   let open List in
   let rec pattern ctx = function
-    | P_int _ -> (T_int, ctx)
-    | P_unit -> (T_unit, ctx)
-    | P_ident (id, t) -> (t, Ctx.bind ctx id t)
-    | P_wildcard t -> (t, ctx)
+    | P_int _ -> (T_int, ctx, [])
+    | P_unit -> (T_unit, ctx, [])
+    | P_ident (id, t) -> (t, Ctx.bind ctx id t, [])
+    | P_wildcard t -> (t, ctx, [])
     | P_tuple (a, b) ->
-        let (at, ctx') = pattern ctx a in
-        let (bt, ctx'') = pattern ctx' b in
-        (T_tuple (at, bt), ctx'') in
+        let (at, ctx', cs) = pattern ctx a in
+        let (bt, ctx'', cs') = pattern ctx' b in
+        (T_tuple (at, bt), ctx'', cs @ cs')
+    | P_constr (c, op) ->
+        let (t, ot) = Ctx.lookup_constr ctx c in
+        match (op, ot) with
+        | (Some p, Some t') ->
+            let (t'', ctx', cs) = pattern ctx p in
+            (t, ctx', (t', t'') :: cs)
+        | (None, None) -> (t, ctx, [])
+        | _ -> raise @@ Typed_exception (Constructor_arity_mismatch c) in
   let rec expression ctx = function
     | E_int _ -> (T_int, [])
     | E_unit -> (T_unit, [])
@@ -143,18 +153,18 @@ let derive_constraints typed =
           args >>| expression ctx |> fold_right ~init:(t,[]) ~f:(fun (t, cs) (s, cs') -> (T_fun (t, s), cs @ cs'))
         in (t, (ft, at) :: cs @ cs')
     | E_fun (p, body) ->
-        let (pt, ctx') = pattern ctx p in
-        let (et, cs) = expression ctx' body in
-        (T_fun (pt, et), cs)
+        let (pt, ctx', cs) = pattern ctx p in
+        let (et, cs') = expression ctx' body in
+        (T_fun (pt, et), cs @ cs')
     | E_tuple (a, b) ->
         let (at, cs) = expression ctx a in
         let (bt, cs') = expression ctx b in
         (T_tuple (at, bt), cs @ cs')
     | E_let (p, e, body) ->
-        let (pt, ctx') = pattern ctx p in
-        let (et, cs) = expression ctx e
-        and (bt, cs') = expression ctx' body in
-        (et, (pt, et) :: cs @ cs')
+        let (pt, ctx', cs) = pattern ctx p in
+        let (et, cs') = expression ctx e
+        and (bt, cs'') = expression ctx' body in
+        (et, (pt, et) :: cs @ cs' @ cs'')
     | E_constr (c, oe) ->
         let (t, ot) = Ctx.lookup_constr ctx c in
         let cs = match (oe, ot) with
@@ -164,9 +174,9 @@ let derive_constraints typed =
         (t, cs) in
   let statement (ctx, cs) = function
     | S_let (p, e) ->
-        let (pt, ctx') = pattern ctx p in
-        let (et, cs') = expression ctx' e in
-        (ctx', (pt, et) :: cs @ cs')
+        let (pt, ctx', cs') = pattern ctx p in
+        let (et, cs'') = expression ctx' e in
+        (ctx', (pt, et) :: cs @ cs' @ cs'')
     | S_type_decl (t, decl) ->
         let ctx' = Ctx.bind_type ctx t decl in
         (ctx', cs) in
@@ -210,7 +220,8 @@ let unify_and_substitute typed =
   let rec pattern = function
     | P_int _ | P_unit | P_wildcard _ as p -> p
     | P_ident (id, t) -> P_ident (id, sub t)
-    | P_tuple (a, b) -> P_tuple (pattern a, pattern b) in
+    | P_tuple (a, b) -> P_tuple (pattern a, pattern b)
+    | P_constr (c, op) -> P_constr (c, Option.map ~f:pattern op) in
   let rec expression = function
     | E_int _ | E_unit | E_ident _ as e -> e
     | E_apply (f, args, t) -> E_apply (expression f, args >>| expression, sub t)
