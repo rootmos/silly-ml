@@ -10,6 +10,14 @@ type typ =
 | T_fun of typ * typ
 [@@deriving sexp]
 
+let rec format_typ = function
+  | T_int -> "int"
+  | T_unit -> "unit"
+  | T_ident id -> id
+  | T_var id -> id
+  | T_tuple (a, b) -> Printf.sprintf "(%s, %s)" (format_typ a) (format_typ b)
+  | T_fun (a, b) -> Printf.sprintf "%s -> %s" (format_typ a) (format_typ b)
+
 type pattern =
   P_int of int
 | P_ident of string * typ
@@ -190,18 +198,18 @@ let derive_constraints ?ctx:(ctx=Ctx.empty) typed =
         | (None, None) -> []
         | _ -> raise @@ Typed_exception (Constructor_arity_mismatch c) in
         (t, cs) in
-  let statement (ctx, cs) = function
+  let statement (ctx, cs, _) = function
     | S_let (p, e) ->
         let (pt, ctx', cs') = pattern ctx p in
         let (et, cs'') = expression ctx' e in
-        (ctx', (pt, et) :: cs @ cs' @ cs'')
+        (ctx', (pt, et) :: cs @ cs' @ cs'', None)
     | S_type_decl (t, decl) ->
         let ctx' = Ctx.bind_type ctx t decl in
-        (ctx', cs)
+        (ctx', cs, None)
     | S_expr e ->
-        let (_, cs) = expression ctx e in
-        (ctx, cs) in
-  fold_left ~init:(ctx, []) ~f:statement typed
+        let (et, cs) = expression ctx e in
+        (ctx, cs, Some et) in
+  fold_left ~init:(ctx, [], None) ~f:statement typed
 
 let rec substitute s t x =
   match s with
@@ -238,7 +246,7 @@ let rec unify = function
 let unify_and_substitute ?ctx:(ctx=Ctx.empty) typed =
   let open List in
   let open Ctx in
-  let (ctx, cs) = derive_constraints ~ctx typed in
+  let (ctx, cs, ot) = derive_constraints ~ctx typed in
   let sub = unify cs in
   let rec pattern = function
     | P_int _ | P_unit as p -> p
@@ -261,4 +269,4 @@ let unify_and_substitute ?ctx:(ctx=Ctx.empty) typed =
     | S_type_decl _ as x -> x
     | S_expr e -> S_expr (expression e) in
   let ctx' = { ctx with bindings = ctx.bindings >>| fun (id, t) -> (id, sub t) } in
-  (typed >>| statement, ctx')
+  (typed >>| statement, ctx', Option.map ~f:sub ot)

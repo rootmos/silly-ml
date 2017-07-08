@@ -104,13 +104,13 @@ let%test_unit "eval match ((1, 2), 3) with ((1, a), b) -> (a, b) | _ -> (1, 2);;
 
 let%test_unit "eval let x = 7;; and then x;;" =
   [%test_result: value]
-  (let (_, ctx) = step Ctx.empty "let x = 7;;" in
-  step ctx "x;;" |> fst)
+  (let (_, ctx, _) = step Ctx.empty "let x = 7;;" in
+  step ctx "x;;" |> fun (x, _, _) -> x)
   ~expect:(V_int 7)
 
 let%test_unit "eval 'type foo = A of int | B;; let f x = match x with A i -> i | B -> 0;;' and then 'f ()' should fail" =
   [%test_result: unit]
-  (let (_, ctx) = step Ctx.empty "type foo = A of int | B;; let f x = match x with A i -> i | B -> 0;;" in
+  (let (_, ctx, _) = step Ctx.empty "type foo = A of int | B;; let f x = match x with A i -> i | B -> 0;;" in
   try let _ = step ctx "f ();;" in failwith "failed!"
   with
   | Typed.Typed_exception Typed.Unification_failed -> ())

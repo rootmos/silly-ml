@@ -16,19 +16,22 @@ let step ctx s =
   let open Ctx in
   let parsed = Parsed_helpers.parse s in
   let typed = Typed.introduce_types parsed in
-  let (typed', typed_ctx') = Typed.unify_and_substitute ~ctx:ctx.typed_ctx typed in
+  let (typed', typed_ctx', ot) = Typed.unify_and_substitute ~ctx:ctx.typed_ctx typed in
   let (lambda, lambda_ctx') = Lambda.transform_to_lambda ~ctx:ctx.lambda_ctx typed' in
   let (v, interpret_ctx') = Interpret.interpret ~ctx:ctx.interpret_ctx lambda in
-  (v, { typed_ctx = typed_ctx'; lambda_ctx = lambda_ctx'; interpret_ctx = interpret_ctx' })
+  (v, { typed_ctx = typed_ctx'; lambda_ctx = lambda_ctx'; interpret_ctx = interpret_ctx' }, ot)
 
-let eval s = step Ctx.empty s |> fst
+let eval s = step Ctx.empty s |> fun (x, _, _) -> x
 
 let rec repl ?ctx:(ctx=Ctx.empty) () =
   print_string "> ";
   try
     let s = read_line () in
-    let (v, ctx') = step ctx s in
-    Interpret.format_value v |> print_endline;
+    let (v, ctx', ot) = step ctx s in
+    begin match (v, ot) with
+    | (_, None) -> ()
+    | (v, Some t) -> Printf.printf "%s: %s\n" (Interpret.format_value v) (Typed.format_typ t)
+    end;
     repl ~ctx:ctx' ()
   with
   | Parsed_helpers.Parser_helpers_exception ->
