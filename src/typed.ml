@@ -104,6 +104,7 @@ let introduce_types parsed =
 type error =
   Unbound_value of string
 | Unbound_constructor of string
+| Unbound_type of string
 | Unification_failed
 | Constructor_arity_mismatch of string
 exception Typed_exception of error
@@ -111,6 +112,7 @@ exception Typed_exception of error
 let format_error = function
   | Unbound_value id -> sprintf "unbound value %s" id
   | Unbound_constructor c -> sprintf "unbound constructor %s" c
+  | Unbound_type t -> sprintf "unbound type %s" t
   | Unification_failed -> "unification failed"
   | Constructor_arity_mismatch c -> sprintf "arity mismatch when applying constructor %s" c
 
@@ -141,6 +143,11 @@ module Ctx = struct
     match List.find_map ~f:g ctx.types with
     | Some x -> x
     | None -> raise @@ Typed_exception (Unbound_constructor c)
+
+  let lookup_type ctx id =
+    match List.Assoc.find ctx.types id with
+    | Some x -> x
+    | None -> raise @@ Typed_exception (Unbound_type id)
 end
 
 let derive_constraints ?ctx:(ctx=Ctx.empty) typed =

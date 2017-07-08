@@ -69,6 +69,9 @@ module Ctx = struct
     match List.Assoc.find ctx.constructors c with
     | Some t -> t
     | None -> raise @@ Lambda_exception (Unbound_constructor c)
+
+  let reconstruct_constructor type_decl i =
+    List.nth_exn type_decl i |> fun (T.V_constr (c, _)) -> c
 end
 
 let transform_to_lambda ?ctx:(ctx=Ctx.empty) typed =
