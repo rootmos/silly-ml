@@ -30,7 +30,7 @@ run "7;;";
 run "let y = 7 in y;;";
 run "let (x, y) = (1, ());; (x, y);;";
 
-run "let x = 7;; let (1, y) = (x, ());; let z = y;;";
+run "let x = 7;; let (7, y) = (x, ());; let z = y;;";
 run "let f a = a;; let () = f ();;";
 run "let kite a b = a;; let () = kite () 7;;";
 

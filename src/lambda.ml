@@ -127,6 +127,5 @@ let transform_to_lambda typed =
         let e' = expression ctx' e in
         E_let (p', e', go ctx' es)
     | (T.S_expr e) :: [] -> expression ctx e
-    | (T.S_expr e) :: es ->
-        let _ = expression ctx e in go ctx es in
+    | (T.S_expr e) :: es -> failwith "not implemented" in
   go Ctx.empty typed

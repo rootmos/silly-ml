@@ -28,17 +28,22 @@ module Ctx = struct
     | None -> raise @@ Interpret_exception (Unbound_value id)
 end
 
-let pattern_match ctx p v =
+let rec pattern_match ctx p v =
   match (p, v) with
+  | (_, L.V_ident id) -> Ctx.lookup ctx id |> pattern_match ctx p
   | (L.P_ident id, v') -> Ctx.bind ctx id v'
+  | (L.P_tuple (a, b), L.V_tuple (x, y)) ->
+      let ctx' = pattern_match ctx a x in
+      pattern_match ctx' b y
+  | (L.P_int i, L.V_int i') when i = i' -> ctx
   | _ -> raise @@ Interpret_exception Matching_error
 
 let rec reduce ctx = function
   | L.E_value v -> (v, ctx)
   | L.E_let (p, e, body) ->
-      let (v, _) = reduce ctx e in
-      let ctx' = pattern_match ctx p v in
-      reduce ctx' body
+      let (v, ctx') = reduce ctx e in
+      let ctx'' = pattern_match ctx' p v in
+      reduce ctx'' body
   | _ -> failwith "not implemented!"
 
 let rec reduce_value ctx = function
