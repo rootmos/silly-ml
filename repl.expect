@@ -1,43 +1,45 @@
 #!/usr/bin/env expect
 spawn ./repl.native
 
-expect "> "
+set prompt {> }
+
+expect -re $prompt
 send "7;;\r"
 expect "7: int"
 
-expect "> "
+expect -re $prompt
 send "type foo = A | B of int;;\r"
 
-expect "> "
+expect -re $prompt
 send "A;;\r"
 expect "A: foo"
 
-expect "> "
+expect -re $prompt
 send "B 7;;\r"
 expect "B 7: foo"
 
-expect "> "
+expect -re $prompt
 send "let f x = match x with A -> 0 | B i -> i;;\r"
 
-expect "> "
+expect -re $prompt
 send "f;;\r"
 expect "<fun>: foo -> int"
 
-expect "> "
+expect -re $prompt
 send "f (A);;\r"
 expect "0: int"
 
-expect "> "
+expect -re $prompt
 send "f (B 3);;\r"
 expect "3: int"
 
-expect "> "
+expect -re $prompt
 send "type bar = C of foo;;\r"
 
-expect "> "
+expect -re $prompt
 send "C A;;\r"
 expect "C A: bar"
 
-expect "> "
+expect -re $prompt
 send "f (C A);;\r"
 expect "unification failed"

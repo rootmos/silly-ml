@@ -1,4 +1,4 @@
-FROM ocaml/opam:alpine-3.3_ocaml-4.03.0_flambda
+FROM ocaml/opam:alpine-3.3_ocaml-4.03.0_flambda as builder
 
 RUN sudo apk add m4 expect
 RUN opam depext conf-m4.1
@@ -13,3 +13,8 @@ COPY repl.expect .
 COPY src src
 
 RUN eval `opam config env` && make test
+
+FROM alpine:3.3
+WORKDIR /root/
+COPY --from=builder /silly-ml/repl.native .
+CMD ["./repl.native"]
