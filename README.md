@@ -1,9 +1,20 @@
 silly-ml
 ========
-
 [![Build Status](https://travis-ci.org/rootmos/silly-ml.svg?branch=master)](https://travis-ci.org/rootmos/silly-ml)
 
-Example session from the REPL:
+`silly-ml` is a small ML-like, type-checked, interpreted language created because [it's weekend](https://www.isittheweekendyet.com/),
+written in [OCaml](https://ocaml.org/) and is inspired by [OCaml](https://github.com/ocaml/ocaml).
+
+Usage
+-----
+Simplest way to try it out is by using Docker:
+```
+docker run -it rootmos/silly-ml
+```
+
+Examples
+--------
+Here's an [example session](repl.expect) from the REPL:
 ```
 > 7;;
 7: int
