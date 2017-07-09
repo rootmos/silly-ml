@@ -35,5 +35,7 @@ B 7: foo
 C A: bar
 > f (C A);;
 typed error: unification failed
+> ((), 7);;
+((), 7): (unit, int)
 >
 ```

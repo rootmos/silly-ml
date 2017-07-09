@@ -43,3 +43,7 @@ expect "C A: bar"
 expect -re $prompt
 send "f (C A);;\r"
 expect "unification failed"
+
+expect -re $prompt
+send "((), 7);;\r"
+expect "((), 7): (unit, int)"
