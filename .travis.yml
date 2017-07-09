@@ -10,7 +10,7 @@ before_install:
   - sudo apt-get -y install docker-ce
 
 env:
-  - IMAGE=rootmos/silly-ml:TRAVIS_BRANCH-$TRAVIS_BUILD_NUMBER-$TRAVIS_COMMIT
+  - IMAGE=rootmos/silly-ml:$TRAVIS_BRANCH-$TRAVIS_BUILD_NUMBER-$TRAVIS_COMMIT
 
 script:
   - docker build -t $IMAGE .
