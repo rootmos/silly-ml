@@ -19,6 +19,6 @@ after_success:
   - docker login -u="$DOCKER_USERNAME" -p="$DOCKER_PASSWORD";
     docker push $IMAGE;
     if [ "$TRAVIS_BRANCH" == "master" ]; then
-      docker tag $IMAGE rootmos/silly-ml:latest
+      docker tag $IMAGE rootmos/silly-ml:latest;
       docker push rootmos/silly-ml:latest;
     fi
