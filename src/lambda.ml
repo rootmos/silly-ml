@@ -74,11 +74,11 @@ module Ctx = struct
     List.nth_exn type_decl i |> fun (T.V_constr (c, _)) -> c
 end
 
-let transform_to_lambda ?ctx:(ctx=Ctx.empty) typed =
+let transform_to_lambda ?(ctx=Ctx.empty) typed =
   let rec pattern ctx = function
-    | T.P_int i -> (P_int i, ctx)
-    | T.P_unit -> (P_unit, ctx)
-    | T.P_wildcard _ -> (P_wildcard, ctx)
+    | T.P_int i -> P_int i, ctx
+    | T.P_unit -> P_unit, ctx
+    | T.P_wildcard _ -> P_wildcard, ctx
     | T.P_ident (id, _) ->
         let id', ctx' = Ctx.new_identifier ctx id in
         P_ident id', ctx'

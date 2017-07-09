@@ -39,31 +39,31 @@ end
 
 let rec pattern_match ctx p v =
   match (p, v) with
-  | (_, L.V_ident id) -> Ctx.lookup ctx id |> pattern_match ctx p
-  | (L.P_ident id, v') -> Ctx.bind ctx id v'
-  | (L.P_tuple (a, b), L.V_tuple (x, y)) ->
+  | _, L.V_ident id -> Ctx.lookup ctx id |> pattern_match ctx p
+  | L.P_ident id, v' -> Ctx.bind ctx id v'
+  | L.P_tuple (a, b), L.V_tuple (x, y) ->
       let ctx' = pattern_match ctx a x in
       pattern_match ctx' b y
-  | (L.P_int i, L.V_int i') when i = i' -> ctx
-  | (L.P_unit, L.V_unit) -> ctx
-  | (L.P_wildcard, _) -> ctx
-  | (L.P_tag (t, p), L.V_tag (t', v)) -> pattern_match ctx p v
+  | L.P_int i, L.V_int i' when i = i' -> ctx
+  | L.P_unit, L.V_unit -> ctx
+  | L.P_wildcard, _ -> ctx
+  | L.P_tag (t, p), L.V_tag (t', v) -> pattern_match ctx p v
   | _ -> raise @@ Interpret_exception Match_error
 
 let rec reduce ctx = function
-  | L.E_value v -> (v, ctx)
+  | L.E_value v -> v, ctx
   | L.E_let (p, e, body) ->
-      let (v, ctx') = reduce ctx e in
+      let v, ctx' = reduce ctx e in
       let ctx'' = pattern_match ctx' p v in
       reduce ctx'' body
   | L.E_apply (L.V_ident id, args) ->
       reduce ctx @@ L.E_apply (Ctx.lookup ctx id, args)
   | L.E_apply (L.V_fun (p, body), a :: args) ->
-      let (a', ctx') = reduce ctx a in
+      let a', ctx' = reduce ctx a in
       let ctx'' = pattern_match ctx' p a' in
-      let (body', ctx''') = reduce ctx'' body in
+      let body', ctx''' = reduce ctx'' body in
       reduce ctx''' @@ L.E_apply (body', args)
-  | L.E_apply (v, []) -> (v, ctx)
+  | L.E_apply (v, []) -> v, ctx
   | L.E_apply (_, _ :: _) -> raise @@ Interpret_exception Unreachable
   | L.E_switch (L.V_ident id, cases) ->
       reduce ctx @@ L.E_switch (Ctx.lookup ctx id, cases)
@@ -71,9 +71,8 @@ let rec reduce ctx = function
       begin try
         let ctx' = pattern_match ctx p v in
         reduce ctx' body
-      with
-        | Interpret_exception Match_error ->
-            reduce ctx @@ L.E_switch (v, cs)
+      with Interpret_exception Match_error ->
+        reduce ctx @@ L.E_switch (v, cs)
       end
   | L.E_switch (v, []) ->
       raise @@ Interpret_exception Match_error
@@ -86,13 +85,13 @@ let rec reduce_value ctx = function
   | L.V_fun _ -> V_fun
   | L.V_tag (t, v) -> V_tag (t, reduce_value ctx v)
 
-let interpret ?ctx:(ctx=Ctx.empty) lambda =
-  let (v, ctx') = reduce ctx lambda in
-  (reduce_value ctx' v, ctx')
+let interpret ?(ctx=Ctx.empty) lambda =
+  let v, ctx' = reduce ctx lambda in
+  reduce_value ctx' v, ctx'
 
 let rec format_value = function
   | V_int i -> string_of_int i
   | V_unit -> "()"
-  | V_tuple (a, b) -> "(" ^ format_value a ^ "," ^ format_value b ^ ")"
+  | V_tuple (a, b) -> sprintf "(%s, %s)" (format_value a) (format_value b)
   | V_fun -> "<fun>"
-  | V_tag (t, v) -> string_of_int t ^ "#" ^ format_value v
+  | V_tag (t, v) -> sprintf "%d#%s" t (format_value v)

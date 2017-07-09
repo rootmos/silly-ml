@@ -150,7 +150,7 @@ module Ctx = struct
     | None -> raise @@ Typed_exception (Unbound_type id)
 end
 
-let derive_constraints ?ctx:(ctx=Ctx.empty) typed =
+let derive_constraints ?(ctx=Ctx.empty) typed =
   let open List in
   let rec pattern ctx = function
     | P_int _ -> T_int, ctx, []
@@ -251,7 +251,7 @@ let rec unify = function
       unify @@ (s1, t1) :: (s2, t2) :: cs
   | _ -> raise @@ Typed_exception Unification_failed
 
-let unify_and_substitute ?ctx:(ctx=Ctx.empty) typed =
+let unify_and_substitute ?(ctx=Ctx.empty) typed =
   let open List in
   let open Ctx in
   let ctx, cs, ot = derive_constraints ~ctx typed in
@@ -270,7 +270,7 @@ let unify_and_substitute ?ctx:(ctx=Ctx.empty) typed =
     | E_fun (p, body) -> E_fun (pattern p, expression body)
     | E_constr (c, oe) -> E_constr (c, Option.(oe >>| expression))
     | E_match (e, cases, t) ->
-        let cases' = cases >>| fun (p, body) -> (pattern p, expression body) in
+        let cases' = cases >>| fun (p, body) -> pattern p, expression body in
         E_match (expression e, cases', sub t) in
   let statement = function
     | S_let (p, e) -> S_let (pattern p, expression e)

@@ -27,10 +27,10 @@ let step ctx s =
 
 let eval s = step Ctx.empty s |> fun (x, _, _) -> x
 
-let rec repl ?ctx:(ctx=Ctx.empty) () =
+let rec repl ?(ctx=Ctx.empty) () =
   let open Ctx in
 
-  let rec pretty ?wrap:(wrap=false) v t =
+  let rec pretty ?(wrap=false) v t =
     match v, t with
     | Interpret.V_int i, Typed.T_ident id ->
         let td = Typed.Ctx.lookup_type ctx.typed_ctx id in
