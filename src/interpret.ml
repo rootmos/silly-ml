@@ -32,7 +32,7 @@ module Ctx = struct
 
   let bind ctx id v = { bindings = (id, v) :: ctx.bindings }
   let lookup ctx id =
-    match List.Assoc.find ctx.bindings id with
+    match List.Assoc.find ~equal:(=) ctx.bindings id with
     | Some t -> t
     | None -> raise @@ Interpret_exception (Unbound_value id)
 end
