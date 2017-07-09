@@ -53,8 +53,11 @@ let rec repl ?ctx:(ctx=Ctx.empty) () =
     end;
     repl ~ctx:ctx' ()
   with
-  | Parsed_helpers.Parser_helpers_exception ->
+  | Parsed_helpers.Parser_helpers_exception Parsed_helpers.Parsing ->
       Printf.printf "parsing error\n";
+      repl ~ctx ()
+  | Parsed_helpers.Parser_helpers_exception (Parsed_helpers.Lexing msg) ->
+      Printf.printf "lexing error: %s\n" msg;
       repl ~ctx ()
   | Interpret.Interpret_exception error ->
       Printf.printf "interpreter error: %s\n" (Interpret.format_error error);
