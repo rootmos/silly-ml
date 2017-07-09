@@ -20,5 +20,24 @@ expect "> "
 send "let f x = match x with A -> 0 | B i -> i;;\r"
 
 expect "> "
+send "f;;\r"
+expect "<fun>: foo -> int"
+
+expect "> "
 send "f (A);;\r"
 expect "0: int"
+
+expect "> "
+send "f (B 3);;\r"
+expect "3: int"
+
+expect "> "
+send "type bar = C of foo;;\r"
+
+expect "> "
+send "C A;;\r"
+expect "C A: bar"
+
+expect "> "
+send "f (C A);;\r"
+expect "unification failed"
