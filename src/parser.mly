@@ -77,13 +77,18 @@ expression:
   ;
 
 expression_without_match:
+  | f = simple_expression; args = nonempty_list(simple_expression_argument) { Parsed.E_apply (f, args) }
   | v = VARIANT; e = expression_without_match { Parsed.E_constr (v, Some e) }
   | v = VARIANT { Parsed.E_constr (v, None) }
-  | f = simple_expression; args = nonempty_list(simple_expression) { Parsed.E_apply (f, args) }
   | LET; i = IDENTIFIER; ps = nonempty_list(simple_pattern); EQUAL; e = expression IN; body = expression_without_match
     { Parsed.E_let (Parsed.P_ident i, mk_fun e ps, body) }
   | LET; p = simple_pattern; EQUAL; e = expression; IN; body = expression_without_match { Parsed.E_let (p, e, body) }
   | FUN; ps = nonempty_list(simple_pattern); ARROW; e = expression_without_match { mk_fun e ps }
+  | se = simple_expression { se }
+  ;
+
+simple_expression_argument:
+  | v = VARIANT { Parsed.E_constr (v, None) }
   | se = simple_expression { se }
   ;
 
@@ -107,7 +112,8 @@ simple_pattern:
   ;
 
 match_with:
-  | MATCH; x = expression; WITH; PIPE?; cs = separated_nonempty_list(PIPE, match_case) { Parsed.E_match (x, cs) }
+  | MATCH; x = expression; WITH; PIPE?; cs = separated_nonempty_list(PIPE, match_case)
+    { Parsed.E_match (x, cs) }
   ;
 
 match_case:

@@ -231,3 +231,12 @@ let%test_unit "parse: let x = 7 in 7;;" =
   (parse "let x = 7 in x;;")
   ~expect:[S_expr (E_let (P_ident "x", E_int 7, E_ident "x"))]
 
+let%test_unit "parse: let _ = f A;;" =
+  [%test_result: t]
+  (parse "let _ = f A;;")
+  ~expect:[S_let (P_wildcard, E_apply (E_ident "f", [E_constr ("A", None)]))]
+
+let%test_unit "parse: f A;;" =
+  [%test_result: t]
+  (parse "f A;;")
+  ~expect:[S_expr (E_apply (E_ident "f", [E_constr ("A", None)]))]

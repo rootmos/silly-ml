@@ -26,7 +26,7 @@ send "f;;\r"
 expect "<fun>: foo -> int"
 
 expect -re $prompt
-send "f (A);;\r"
+send "f A;;\r"
 expect "0: int"
 
 expect -re $prompt
