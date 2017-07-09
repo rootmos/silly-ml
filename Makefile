@@ -1,17 +1,19 @@
 OCB_FLAGS := -use-ocamlfind -plugin-tag "package(ppx_driver.ocamlbuild)"
 OCB := ocamlbuild $(OCB_FLAGS)
 
-SRC=$(shell git ls-files)
+SRC=$(shell ls src/*.ml src/*.mly src/*.mll)
 
 .PHONY: repl
 repl: repl.native
 	rlwrap ./$<
 
-.PHONY: test
-test: parser_tests interpret_tests
+test: parser_tests interpret_tests test-repl
+
+test-repl: repl.native
+	./repl.expect
 
 %_tests: %_tests.native
-	./$< inline-test-runner test # verbose -stop-on-error
+	./$< inline-test-runner test -verbose -stop-on-error
 
 .PHONY: snippet
 snippet: snippet.native $(SRC)
@@ -21,5 +23,6 @@ snippet: snippet.native $(SRC)
 clean:
 	$(OCB) -clean
 
+.PRECIOUS: %.native
 %.native: $(SRC)
 	$(OCB) $@

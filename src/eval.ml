@@ -36,7 +36,7 @@ let rec repl ?ctx:(ctx=Ctx.empty) () =
     | (Interpret.V_tag (i, v'), Typed.T_ident id) ->
         let td = Typed.Ctx.lookup_type ctx.typed_ctx id in
         let c = Lambda.Ctx.reconstruct_constructor td i in
-        begin match List.Assoc.find (List.(td >>| fun (Typed.V_constr x) -> x)) c with
+        begin match List.Assoc.find ~equal:(=) (List.(td >>| fun (Typed.V_constr x) -> x)) c with
         | Some (Some t) when wrap -> Printf.sprintf "(%s %s)" c (pretty ~wrap:true v' t)
         | Some (Some t)           -> Printf.sprintf "%s %s" c (pretty ~wrap:true v' t)
         | _ -> failwith "eval whoopsie"
@@ -45,7 +45,7 @@ let rec repl ?ctx:(ctx=Ctx.empty) () =
 
   print_string "> ";
   try
-    let s = read_line () in
+    let s = Pervasives.read_line () in
     let (v, ctx', ot) = step ctx s in
     begin match (v, ot) with
     | (_, None) -> ()
@@ -66,5 +66,5 @@ let rec repl ?ctx:(ctx=Ctx.empty) () =
       Printf.printf "typed error: %s\n" (Typed.format_error error);
       repl ~ctx ()
   | Sys.Break ->
-      print_newline (); repl ~ctx ()
+      Pervasives.print_newline (); repl ~ctx ()
   | End_of_file -> ()

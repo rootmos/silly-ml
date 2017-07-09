@@ -57,7 +57,7 @@ module Ctx = struct
     (id', ctx')
 
   let lookup_identifier ctx id =
-    match List.Assoc.find ctx.identifiers id with
+    match List.Assoc.find ~equal:(=) ctx.identifiers id with
     | Some id' -> id'
     | None -> raise @@ Lambda_exception (Unbound_identifier id)
 
@@ -66,7 +66,7 @@ module Ctx = struct
     { ctx with constructors = cs @ ctx.constructors }
 
   let lookup_constructor ctx c =
-    match List.Assoc.find ctx.constructors c with
+    match List.Assoc.find ~equal:(=) ctx.constructors c with
     | Some t -> t
     | None -> raise @@ Lambda_exception (Unbound_constructor c)
 

@@ -126,7 +126,7 @@ module Ctx = struct
 
   let bind ctx id t = { ctx with bindings = (id, t) :: ctx.bindings }
   let lookup ctx id =
-    match List.Assoc.find ctx.bindings id with
+    match List.Assoc.find ~equal:(=) ctx.bindings id with
     | Some t -> t
     | None -> raise (Typed_exception (Unbound_value id))
 
@@ -145,7 +145,7 @@ module Ctx = struct
     | None -> raise @@ Typed_exception (Unbound_constructor c)
 
   let lookup_type ctx id =
-    match List.Assoc.find ctx.types id with
+    match List.Assoc.find ~equal:(=) ctx.types id with
     | Some x -> x
     | None -> raise @@ Typed_exception (Unbound_type id)
 end
