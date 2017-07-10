@@ -118,7 +118,9 @@ let format_error = function
 
 let predefined_functions =
   String.Map.of_alist_exn [
-    "(+)", T_fun (T_int, T_fun (T_int, T_int))
+    "(+)", T_fun (T_int, T_fun (T_int, T_int));
+    "(-)", T_fun (T_int, T_fun (T_int, T_int));
+    "(*)", T_fun (T_int, T_fun (T_int, T_int));
   ]
 
 module Ctx = struct

@@ -120,3 +120,13 @@ let%test_unit "eval 7 + 4;;" =
   [%test_result: value]
   (eval "7 + 4;;")
   ~expect:(V_int 11)
+
+let%test_unit "eval 7 - 4;;" =
+  [%test_result: value]
+  (eval "7 - 4;;")
+  ~expect:(V_int 3)
+
+let%test_unit "eval 3 * 4;;" =
+  [%test_result: value]
+  (eval "3 * 4;;")
+  ~expect:(V_int 12)

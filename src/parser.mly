@@ -14,6 +14,7 @@
 %token MATCH
 %token WITH
 %token PLUS
+%token MINUS
 %token <string> WILDCARD
 %token <string> IDENTIFIER
 %token <string> VARIANT
@@ -95,6 +96,8 @@ expression_without_match:
 
 infix_operator:
   | PLUS { Parsed.E_ident "(+)" }
+  | MINUS { Parsed.E_ident "(-)" }
+  | ASTERISK { Parsed.E_ident "(*)" }
   ;
 
 simple_expression_argument:

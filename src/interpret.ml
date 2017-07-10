@@ -57,13 +57,12 @@ let rec reduce ctx = function
       let v, ctx' = reduce ctx e in
       let ctx'' = pattern_match ctx' p v in
       reduce ctx'' body
-  | L.E_apply (L.V_predef "(+)", args) ->
-      let int_exn = function
-        | L.V_int i -> i
-        | _ -> raise @@ Interpret_exception Unreachable in
-      let f = reduce ctx in
-      let sum = List.( args >>| f >>| fst >>| int_exn |> fold_right ~f:(+) ~init:0) in
-      L.V_int sum, ctx
+  | L.E_apply (L.V_predef "(+)", L.E_value (L.V_int a) :: L.E_value (L.V_int b) :: []) ->
+      L.V_int (a + b), ctx
+  | L.E_apply (L.V_predef "(-)", L.E_value (L.V_int a) :: L.E_value (L.V_int b) :: []) ->
+      L.V_int (a - b), ctx
+  | L.E_apply (L.V_predef "(*)", L.E_value (L.V_int a) :: L.E_value (L.V_int b) :: []) ->
+      L.V_int (a * b), ctx
   | L.E_apply (L.V_predef _, _) ->
       raise @@ Interpret_exception Unreachable
   | L.E_apply (L.V_ident id, args) ->
