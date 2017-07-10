@@ -60,14 +60,17 @@ let rec reduce ctx = function
   | L.E_apply (L.V_predef id, args) ->
       let rev_args, ctx' = List.fold_left args ~init:([], ctx) ~f:(fun (args, ctx) a ->
         let a', ctx' = reduce ctx a in (a' :: args, ctx')) in
-      begin match id, List.rev rev_args with
-      | "(+)", (L.V_int a) :: (L.V_int b) :: [] ->
+      let args' = List.rev rev_args |> List.map ~f:(function
+        | L.V_ident id -> Ctx.lookup ctx id
+        | v -> v) in
+      begin match id, args' with
+      | "(+)", L.V_int a :: L.V_int b :: [] ->
           L.V_int (a + b), ctx
-      | "(-)", (L.V_int a) :: (L.V_int b) :: [] ->
+      | "(-)", L.V_int a :: L.V_int b :: [] ->
           L.V_int (a - b), ctx
-      | "(*)", (L.V_int a) :: (L.V_int b) :: [] ->
+      | "(*)", L.V_int a :: L.V_int b :: [] ->
           L.V_int (a * b), ctx
-      | "print_int", (L.V_int a) :: [] -> print_int a; L.V_unit, ctx
+      | "print_int", L.V_int a :: [] -> print_int a; L.V_unit, ctx
       | "print_newline", L.V_unit :: [] -> print_newline (); L.V_unit, ctx
       | _ -> raise @@ Interpret_exception Unreachable end
   | L.E_apply (L.V_ident id, args) ->

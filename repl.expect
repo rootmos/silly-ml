@@ -53,6 +53,9 @@ send "3 * (7 - (1 + 2));;\r"
 expect "12: int"
 
 expect -re $prompt
-send "print_int 7;; print_newline ();;\r"
+send "let x = 7;;\r"
+
+expect -re $prompt
+send "print_int x;; print_newline ();;\r"
 expect "7\r"
 expect "(): unit"

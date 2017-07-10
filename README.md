@@ -39,7 +39,8 @@ typed error: unification failed
 ((), 7): (unit, int)
 > 3 * (7 - (1 + 2));;
 12: int
-> print_int 7;; print_newline ();;
+> let x = 7;;
+> print_int x;; print_newline ();;
 7
 (): unit
 >
