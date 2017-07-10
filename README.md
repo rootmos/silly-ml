@@ -26,7 +26,7 @@ B 7: foo
 > let f x = match x with A -> 0 | B i -> i;;
 > f;;
 <fun>: foo -> int
-> f (A);;
+> f A;;
 0: int
 > f (B 3);;
 3: int
@@ -37,5 +37,10 @@ C A: bar
 typed error: unification failed
 > ((), 7);;
 ((), 7): (unit, int)
+> 3 * (7 - (1 + 2));;
+12: int
+> print_int 7;; print_newline ();;
+7
+(): unit
 >
 ```

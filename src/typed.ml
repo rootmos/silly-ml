@@ -121,6 +121,8 @@ let predefined_functions =
     "(+)", T_fun (T_int, T_fun (T_int, T_int));
     "(-)", T_fun (T_int, T_fun (T_int, T_int));
     "(*)", T_fun (T_int, T_fun (T_int, T_int));
+    "print_int", T_fun (T_int, T_unit);
+    "print_newline", T_fun (T_unit, T_unit);
   ]
 
 module Ctx = struct

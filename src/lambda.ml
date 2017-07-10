@@ -147,5 +147,8 @@ let transform_to_lambda ?(ctx=Ctx.empty) typed =
         let e'', ctx'' = go ctx' es in
         E_let (p', e', e''), ctx''
     | (T.S_expr e) :: [] -> expression ctx e, ctx
-    | (T.S_expr e) :: es -> failwith "discarding value" in
+    | (T.S_expr e) :: es ->
+        let e' = expression ctx e in
+        let e'', ctx' = go ctx es in
+        E_let (P_wildcard, e', e''), ctx' in
   go ctx typed

@@ -47,3 +47,12 @@ expect "unification failed"
 expect -re $prompt
 send "((), 7);;\r"
 expect "((), 7): (unit, int)"
+
+expect -re $prompt
+send "3 * (7 - (1 + 2));;\r"
+expect "12: int"
+
+expect -re $prompt
+send "print_int 7;; print_newline ();;\r"
+expect "7\r"
+expect "(): unit"

@@ -57,14 +57,19 @@ let rec reduce ctx = function
       let v, ctx' = reduce ctx e in
       let ctx'' = pattern_match ctx' p v in
       reduce ctx'' body
-  | L.E_apply (L.V_predef "(+)", L.E_value (L.V_int a) :: L.E_value (L.V_int b) :: []) ->
-      L.V_int (a + b), ctx
-  | L.E_apply (L.V_predef "(-)", L.E_value (L.V_int a) :: L.E_value (L.V_int b) :: []) ->
-      L.V_int (a - b), ctx
-  | L.E_apply (L.V_predef "(*)", L.E_value (L.V_int a) :: L.E_value (L.V_int b) :: []) ->
-      L.V_int (a * b), ctx
-  | L.E_apply (L.V_predef _, _) ->
-      raise @@ Interpret_exception Unreachable
+  | L.E_apply (L.V_predef id, args) ->
+      let rev_args, ctx' = List.fold_left args ~init:([], ctx) ~f:(fun (args, ctx) a ->
+        let a', ctx' = reduce ctx a in (a' :: args, ctx')) in
+      begin match id, List.rev rev_args with
+      | "(+)", (L.V_int a) :: (L.V_int b) :: [] ->
+          L.V_int (a + b), ctx
+      | "(-)", (L.V_int a) :: (L.V_int b) :: [] ->
+          L.V_int (a - b), ctx
+      | "(*)", (L.V_int a) :: (L.V_int b) :: [] ->
+          L.V_int (a * b), ctx
+      | "print_int", (L.V_int a) :: [] -> print_int a; L.V_unit, ctx
+      | "print_newline", L.V_unit :: [] -> print_newline (); L.V_unit, ctx
+      | _ -> raise @@ Interpret_exception Unreachable end
   | L.E_apply (L.V_ident id, args) ->
       reduce ctx @@ L.E_apply (Ctx.lookup ctx id, args)
   | L.E_apply (L.V_fun (p, body), a :: args) ->
