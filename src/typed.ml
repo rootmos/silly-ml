@@ -116,6 +116,11 @@ let format_error = function
   | Unification_failed -> "unification failed"
   | Constructor_arity_mismatch c -> sprintf "arity mismatch when applying constructor %s" c
 
+let predefined_functions =
+  String.Map.of_alist_exn [
+    "(+)", T_fun (T_int, T_fun (T_int, T_int))
+  ]
+
 module Ctx = struct
   type t = {
     types: (string * type_decl) list;
@@ -128,7 +133,10 @@ module Ctx = struct
   let lookup ctx id =
     match List.Assoc.find ~equal:(=) ctx.bindings id with
     | Some t -> t
-    | None -> raise (Typed_exception (Unbound_value id))
+    | None ->
+        match String.Map.find predefined_functions id with
+        | Some t -> t
+        | none -> raise @@ Typed_exception (Unbound_value id)
 
   let bind_type ctx t decl = {
     ctx with types = (t, decl) :: ctx.types

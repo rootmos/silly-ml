@@ -35,6 +35,7 @@ rule read = parse
   | '|' { PIPE }
   | '*' { ASTERISK }
   | ',' { COMMA }
+  | '+' { PLUS }
   | ws { read lexbuf }
   | int { INT (int_of_string (L.lexeme lexbuf)) }
   | identifier { IDENTIFIER (L.lexeme lexbuf) }

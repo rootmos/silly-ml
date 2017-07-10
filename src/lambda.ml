@@ -17,6 +17,7 @@ type value =
 | V_ident of string
 | V_fun of pattern * expression
 | V_tag of int * value
+| V_predef of string
 [@@deriving sexp]
 and expression =
   E_value of value
@@ -43,6 +44,11 @@ let fresh_identifier () =
   let id = "L" ^ string_of_int !counter in
   counter := !counter + 1; id
 
+let predefined_functions =
+  T.predefined_functions
+    |> String.Map.keys
+    |> String.Set.of_list
+
 module Ctx = struct
   type t = {
     identifiers: (string * string) list;
@@ -58,8 +64,11 @@ module Ctx = struct
 
   let lookup_identifier ctx id =
     match List.Assoc.find ~equal:(=) ctx.identifiers id with
-    | Some id' -> id'
-    | None -> raise @@ Lambda_exception (Unbound_identifier id)
+    | Some id' -> V_ident id'
+    | None ->
+        if String.Set.mem predefined_functions id
+        then V_predef id
+        else raise @@ Lambda_exception (Unbound_identifier id)
 
   let bind_type_decl ctx type_decl =
     let cs = List.mapi ~f:(fun i (T.V_constr (c, _)) -> c, i) type_decl in
@@ -93,7 +102,7 @@ let transform_to_lambda ?(ctx=Ctx.empty) typed =
   let rec expression ctx = function
     | T.E_int i -> E_value (V_int i)
     | T.E_unit -> E_value (V_unit)
-    | T.E_ident id -> E_value (V_ident (Ctx.lookup_identifier ctx id))
+    | T.E_ident id -> E_value (Ctx.lookup_identifier ctx id)
     | T.E_let (p, e, body) ->
         let p', ctx' = pattern ctx p in
         let e' = expression ctx e in

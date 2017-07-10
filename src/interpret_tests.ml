@@ -115,3 +115,8 @@ let%test_unit "eval 'type foo = A of int | B;; let f x = match x with A i -> i |
   with
   | Typed.Typed_exception Typed.Unification_failed -> ())
   ~expect:()
+
+let%test_unit "eval 7 + 4;;" =
+  [%test_result: value]
+  (eval "7 + 4;;")
+  ~expect:(V_int 11)

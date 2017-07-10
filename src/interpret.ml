@@ -8,6 +8,7 @@ type value =
 | V_tuple of value * value
 | V_fun
 | V_tag of int * value
+| V_predef
 [@@deriving sexp]
 
 let compare_value = Pervasives.compare
@@ -56,6 +57,15 @@ let rec reduce ctx = function
       let v, ctx' = reduce ctx e in
       let ctx'' = pattern_match ctx' p v in
       reduce ctx'' body
+  | L.E_apply (L.V_predef "(+)", args) ->
+      let int_exn = function
+        | L.V_int i -> i
+        | _ -> raise @@ Interpret_exception Unreachable in
+      let f = reduce ctx in
+      let sum = List.( args >>| f >>| fst >>| int_exn |> fold_right ~f:(+) ~init:0) in
+      L.V_int sum, ctx
+  | L.E_apply (L.V_predef _, _) ->
+      raise @@ Interpret_exception Unreachable
   | L.E_apply (L.V_ident id, args) ->
       reduce ctx @@ L.E_apply (Ctx.lookup ctx id, args)
   | L.E_apply (L.V_fun (p, body), a :: args) ->
@@ -84,6 +94,7 @@ let rec reduce_value ctx = function
   | L.V_ident id -> Ctx.lookup ctx id |> reduce_value ctx
   | L.V_fun _ -> V_fun
   | L.V_tag (t, v) -> V_tag (t, reduce_value ctx v)
+  | L.V_predef _ -> V_predef
 
 let interpret ?(ctx=Ctx.empty) lambda =
   let v, ctx' = reduce ctx lambda in
@@ -95,3 +106,4 @@ let rec format_value = function
   | V_tuple (a, b) -> sprintf "(%s, %s)" (format_value a) (format_value b)
   | V_fun -> "<fun>"
   | V_tag (t, v) -> sprintf "%d#%s" t (format_value v)
+  | V_predef -> "<predefined>"

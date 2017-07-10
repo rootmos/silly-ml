@@ -13,6 +13,7 @@
 %token COMMA
 %token MATCH
 %token WITH
+%token PLUS
 %token <string> WILDCARD
 %token <string> IDENTIFIER
 %token <string> VARIANT
@@ -77,14 +78,23 @@ expression:
   ;
 
 expression_without_match:
-  | f = simple_expression; args = nonempty_list(simple_expression_argument) { Parsed.E_apply (f, args) }
+  | f = simple_expression; args = nonempty_list(simple_expression_argument)
+    { Parsed.E_apply (f, args) }
   | v = VARIANT; e = expression_without_match { Parsed.E_constr (v, Some e) }
   | v = VARIANT { Parsed.E_constr (v, None) }
-  | LET; i = IDENTIFIER; ps = nonempty_list(simple_pattern); EQUAL; e = expression IN; body = expression_without_match
+  | LET; i = IDENTIFIER; ps = nonempty_list(simple_pattern); EQUAL; e = expression
+    IN; body = expression_without_match
     { Parsed.E_let (Parsed.P_ident i, mk_fun e ps, body) }
-  | LET; p = simple_pattern; EQUAL; e = expression; IN; body = expression_without_match { Parsed.E_let (p, e, body) }
+  | LET; p = simple_pattern; EQUAL; e = expression; IN; body = expression_without_match
+    { Parsed.E_let (p, e, body) }
   | FUN; ps = nonempty_list(simple_pattern); ARROW; e = expression_without_match { mk_fun e ps }
+  | l = simple_expression; op = infix_operator; r = simple_expression
+    { Parsed.E_apply (op, [l; r]) }
   | se = simple_expression { se }
+  ;
+
+infix_operator:
+  | PLUS { Parsed.E_ident "(+)" }
   ;
 
 simple_expression_argument:

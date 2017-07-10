@@ -240,3 +240,18 @@ let%test_unit "parse: f A;;" =
   [%test_result: t]
   (parse "f A;;")
   ~expect:[S_expr (E_apply (E_ident "f", [E_constr ("A", None)]))]
+
+let%test_unit "parse: f A;;" =
+  [%test_result: t]
+  (parse "f A;;")
+  ~expect:[S_expr (E_apply (E_ident "f", [E_constr ("A", None)]))]
+
+let%test_unit "parse: 1 + 2;;" =
+  [%test_result: t]
+  (parse "1 + 2;;")
+  ~expect:[S_expr (E_apply (E_ident "(+)", [E_int 1; E_int 2]))]
+
+let%test_unit "parse: 1 + 2 + 3;;" =
+  [%test_result: t]
+  (parse "(1 + 2) + 3;;")
+  ~expect:[S_expr (E_apply (E_ident "(+)", [E_apply (E_ident "(+)", [E_int 1; E_int 2]); E_int 3]))]
