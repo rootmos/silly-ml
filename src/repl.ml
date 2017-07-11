@@ -1,3 +1,3 @@
-Sys.catch_break true
-
-let () = Eval.repl ()
+let () =
+  Sys.catch_break true;
+  Eval.repl ()

@@ -135,12 +135,11 @@ module Ctx = struct
 
   let bind ctx id t = { ctx with bindings = (id, t) :: ctx.bindings }
   let lookup ctx id =
-    match List.Assoc.find ~equal:(=) ctx.bindings id with
+    let b = List.Assoc.find ~equal:(=) ctx.bindings id
+    and p = String.Map.find predefined_functions id in
+    match Option.merge b p ~f:(fun x y -> x) with
     | Some t -> t
-    | None ->
-        match String.Map.find predefined_functions id with
-        | Some t -> t
-        | none -> raise @@ Typed_exception (Unbound_value id)
+    | None -> raise @@ Typed_exception (Unbound_value id)
 
   let bind_type ctx t decl = {
     ctx with types = (t, decl) :: ctx.types

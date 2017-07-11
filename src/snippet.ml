@@ -21,7 +21,6 @@ let run s =
   let x, _ = Interpret.interpret lambda in
   Interpret.format_value x |> print_endline;
 
-  print_newline ();;
+  print_newline ()
 
-
-run "1 + 2;;"
+let () = run "1 + 2;;"
