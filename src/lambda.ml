@@ -1,4 +1,5 @@
 open Core_kernel.Std
+open Utils
 module T = Typed
 
 type pattern =
@@ -17,15 +18,52 @@ type value =
 | V_ident of string
 | V_tag of int * value
 | V_predef of string
-| V_closure of pattern * expression * (string * value) list
-[@@deriving sexp]
+| V_captured_closure of captured_closure
+  [@@deriving sexp]
 and expression =
   E_value of value
 | E_apply of expression * expression list
 | E_let of pattern * expression * expression
 | E_tuple of expression * expression
 | E_switch of value * (pattern * expression) list
-[@@deriving sexp]
+| E_uncaptured_closure of uncaptured_closure
+  [@@deriving sexp]
+and captured_closure = {
+  cc_p: pattern;
+  cc_body: expression;
+  cc_captures: (string * value) list
+} [@@deriving sexp]
+and uncaptured_closure = {
+  uc_p: pattern;
+  uc_body: expression;
+  uc_free: string list
+} [@@deriving sexp]
+
+let rec pattern_captures = function
+  | P_int _ | P_unit | P_wildcard -> []
+  | P_ident id -> [id]
+  | P_tag (_, v) -> pattern_captures v
+  | P_tuple (a, b) -> pattern_captures a @ pattern_captures b
+
+let rec free e =
+  let open List in
+  let rec free_value = function
+    | V_int _ | V_unit | V_predef _ | V_captured_closure _ -> []
+    | V_ident id -> [id]
+    | V_tag (_, v) -> free_value v
+    | V_tuple (a, b) -> free_value a @ free_value b in
+  match e with
+  | E_value v -> free_value v
+  | E_apply (f, args) ->
+      free f @ concat (args >>| free)
+  | E_tuple (a, b) -> free a @ free b
+  | E_let (p, e, body) ->
+      free e @ set_minus (free body) (pattern_captures p)
+  | E_uncaptured_closure uc -> uc.uc_free
+  | E_switch (v, cases) ->
+      free_value v @ concat (
+        cases >>| fun (p, case) ->
+          set_minus (free case) (pattern_captures p))
 
 type t = expression
 [@@deriving sexp]
@@ -43,7 +81,7 @@ let counter = ref 0
 
 let fresh_identifier () =
   let id = "L" ^ string_of_int !counter in
-  counter := !counter + 1; id
+  incr counter; id
 
 let predefined_functions =
   T.predefined_functions
@@ -85,7 +123,6 @@ module Ctx = struct
 end
 
 let transform_to_lambda ?(ctx=Ctx.empty) typed =
-  let mk_fun p body = V_closure (p, body, []) in
   let rec pattern ctx = function
     | T.P_int i -> P_int i, ctx
     | T.P_unit -> P_unit, ctx
@@ -114,10 +151,11 @@ let transform_to_lambda ?(ctx=Ctx.empty) typed =
         let a' = expression ctx a in
         let b' = expression ctx b in
         E_tuple (a', b')
-    | T.E_fun (p, e) ->
-        let p', ctx' = pattern ctx p in
-        let e' = expression ctx' e in
-        E_value (mk_fun p' e')
+    | T.E_fun (p, body) ->
+        let uc_p, ctx' = pattern ctx p in
+        let uc_body = expression ctx' body in
+        let uc_free = set_minus (free uc_body) (pattern_captures uc_p) in
+        E_uncaptured_closure { uc_p ; uc_body; uc_free }
     | T.E_apply (T.E_ident id, args, _) ->
         let args' = List.map ~f:(expression ctx) args in
         E_apply (E_value (Ctx.lookup_identifier ctx id), args')

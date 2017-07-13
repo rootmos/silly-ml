@@ -32,10 +32,10 @@ let rec repl ?(ctx=Ctx.empty) () =
 
   let rec pretty ?(wrap=false) v t =
     match v, t with
-    | Interpret.V_int i, Typed.T_ident id ->
+    | Interpret.I.V_int i, Typed.T_ident id ->
         let td = Typed.Ctx.lookup_type ctx.typed_ctx id in
         Lambda.Ctx.reconstruct_constructor td i
-    | Interpret.V_tag (i, v'), Typed.T_ident id ->
+    | Interpret.I.V_tag (i, v'), Typed.T_ident id ->
         let td = Typed.Ctx.lookup_type ctx.typed_ctx id in
         let c = Lambda.Ctx.reconstruct_constructor td i in
         begin match List.Assoc.find ~equal:(=) (List.(td >>| fun (Typed.V_constr x) -> x)) c with
@@ -43,7 +43,7 @@ let rec repl ?(ctx=Ctx.empty) () =
         | Some (Some t)           -> sprintf "%s %s" c (pretty ~wrap:true v' t)
         | _ -> failwith "eval whoopsie"
         end
-    | v, _ -> Interpret.format_value v in
+    | v, _ -> Interpret.I.to_string v in
 
   print_string "> ";
   try

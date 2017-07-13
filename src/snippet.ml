@@ -26,5 +26,5 @@ let run s =
 let () = Config.set_verbose true
 
 let () = run "let f a = a;; f ();;"
-let () = run "type foo = A | B of int;; let f x = match x with A -> 0 | B i -> i;; f (B 3);;"
+(*let () = run "type foo = A | B of int;; let f x = match x with A -> 0 | B i -> i;; f (B 3);;"*)
 let () = run "let f x y = x + y;; let g = f 1;; let h = f 2;; g 2;;"
