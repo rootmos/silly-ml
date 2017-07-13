@@ -44,8 +44,14 @@ typed error: unification failed
 7
 (): unit
 > let f x y = x + y;;
+> f;;
+<fun>: int -> int -> int
 > let g = f 1;;
+> g;;
+<fun>: int -> int
 > let h = f 2;;
+> h;;
+<fun>: int -> int
 > g 2;;
 3: int
 > h 2;;
