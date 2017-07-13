@@ -1,4 +1,4 @@
-open Interpret
+open Interpret.I
 open Eval
 open Core_kernel.Std
 
@@ -140,3 +140,8 @@ let%test_unit "eval type foo = A | B of int;; let f x = match x with A -> 0 | B 
   [%test_result: value]
   (eval "type foo = A | B of int;; let f x = match x with A -> 0 | B i -> i;; f (B 3);;")
   ~expect:(V_int 3)
+
+let%test_unit "eval let a = 7;; let f x = a + x;; let 8 = f 1;; let a = 9;; f 1" =
+  [%test_result: value]
+  (eval "let a = 7;; let f x = a + x;; let 8 = f 1;; let a = 9;; f 1")
+  ~expect:(V_int 8)

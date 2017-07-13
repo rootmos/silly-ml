@@ -18,8 +18,8 @@ let run s =
   let lambda, _ = Lambda.transform_to_lambda typed' in
   Lambda.sexp_of_t lambda |> Sexp.to_string_hum |> print_endline;
 
-  (*let x, _ = Interpret.interpret lambda in*)
-  (*Interpret.format_value x |> print_endline;*)
+  let x, _ = Interpret.interpret lambda in
+  Interpret.format_value x |> print_endline;
 
   print_newline ()
 
