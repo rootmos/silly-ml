@@ -17,15 +17,43 @@ type value =
 | V_ident of string
 | V_tag of int * value
 | V_predef of string
-| V_closure of pattern * expression * (string * value) list
-[@@deriving sexp]
+| V_captured_closure of captured_closure
+  [@@deriving sexp]
 and expression =
   E_value of value
 | E_apply of expression * expression list
 | E_let of pattern * expression * expression
 | E_tuple of expression * expression
 | E_switch of value * (pattern * expression) list
-[@@deriving sexp]
+| E_uncaptured_closure of uncaptured_closure
+  [@@deriving sexp]
+and captured_closure = { p: pattern; body: expression; captures: (string * value) list }
+  [@@deriving sexp]
+and uncaptured_closure = { p: pattern; body: expression; free: string list }
+  [@@deriving sexp]
+
+let rec pattern_captures = function
+  | P_int _ | P_unit | P_wildcard -> []
+  | P_ident id -> [id]
+  | P_tag (_, v) -> pattern_captures v
+  | P_tuple (a, b) -> pattern_captures a @ pattern_captures b
+
+let rec free e =
+  let rec free_value = function
+    | V_int _ | V_unit | V_predef _ | V_captured_closure _ -> []
+    | V_ident id -> [id]
+    | V_tag (_, v) -> free_value v
+    | V_tuple (a, b) -> free_value a @ free_value b in
+  match e with
+  | E_value v -> free_value v
+  | E_apply (f, args) ->
+      free f @ List.concat (List.map ~f:free args)
+  | E_tuple (a, b) -> free a @ free b
+  | E_let (p, e, body) ->
+      let c = pattern_captures p in
+      free e @ List.filter (free body) ~f:(fun id -> not (List.mem c id))
+  | E_uncaptured_closure uc -> uc.free
+
 
 type t = expression
 [@@deriving sexp]
@@ -85,7 +113,6 @@ module Ctx = struct
 end
 
 let transform_to_lambda ?(ctx=Ctx.empty) typed =
-  let mk_fun p body = V_closure (p, body, []) in
   let rec pattern ctx = function
     | T.P_int i -> P_int i, ctx
     | T.P_unit -> P_unit, ctx
@@ -114,10 +141,12 @@ let transform_to_lambda ?(ctx=Ctx.empty) typed =
         let a' = expression ctx a in
         let b' = expression ctx b in
         E_tuple (a', b')
-    | T.E_fun (p, e) ->
-        let p', ctx' = pattern ctx p in
-        let e' = expression ctx' e in
-        E_value (mk_fun p' e')
+    | T.E_fun (p, body) ->
+        let p, ctx' = pattern ctx p in
+        let body = expression ctx' body in
+        let c = pattern_captures p in
+        let free = List.filter (free body) ~f:(fun id -> not (List.mem c id)) in
+        E_uncaptured_closure { p ; body; free }
     | T.E_apply (T.E_ident id, args, _) ->
         let args' = List.map ~f:(expression ctx) args in
         E_apply (E_value (Ctx.lookup_identifier ctx id), args')
