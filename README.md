@@ -43,5 +43,12 @@ typed error: unification failed
 > print_int x;; print_newline ();;
 7
 (): unit
+> let f x y = x + y;;
+> let g = f 1;;
+> let h = f 2;;
+> g 2;;
+3: int
+> h 2;;
+4: int
 >
 ```

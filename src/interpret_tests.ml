@@ -130,3 +130,13 @@ let%test_unit "eval 3 * 4;;" =
   [%test_result: value]
   (eval "3 * 4;;")
   ~expect:(V_int 12)
+
+let%test_unit "eval let f x y = x + y;; let g = f 1;; let h = f 2;; g 2;;" =
+  [%test_result: value]
+  (eval "let f x y = x + y;; let g = f 1;; let h = f 2;; g 2;;")
+  ~expect:(V_int 3)
+
+let%test_unit "eval type foo = A | B of int;; let f x = match x with A -> 0 | B i -> i;; f (B 3);;" =
+  [%test_result: value]
+  (eval "type foo = A | B of int;; let f x = match x with A -> 0 | B i -> i;; f (B 3);;")
+  ~expect:(V_int 3)

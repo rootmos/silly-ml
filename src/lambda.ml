@@ -15,14 +15,15 @@ type value =
 | V_unit
 | V_tuple of value * value
 | V_ident of string
-| V_fun of pattern * expression
 | V_tag of int * value
 | V_predef of string
+| V_closure of pattern * expression * (string * value) list
 [@@deriving sexp]
 and expression =
   E_value of value
-| E_apply of value * expression list
+| E_apply of expression * expression list
 | E_let of pattern * expression * expression
+| E_tuple of expression * expression
 | E_switch of value * (pattern * expression) list
 [@@deriving sexp]
 
@@ -84,6 +85,7 @@ module Ctx = struct
 end
 
 let transform_to_lambda ?(ctx=Ctx.empty) typed =
+  let mk_fun p body = V_closure (p, body, []) in
   let rec pattern ctx = function
     | T.P_int i -> P_int i, ctx
     | T.P_unit -> P_unit, ctx
@@ -110,26 +112,32 @@ let transform_to_lambda ?(ctx=Ctx.empty) typed =
         E_let (p', e', body')
     | T.E_tuple (a, b) ->
         let a' = expression ctx a in
-        let al = fresh_identifier () in
         let b' = expression ctx b in
-        let bl = fresh_identifier () in
-        E_let (P_ident al, a',
-          E_let (P_ident bl, b', E_value (V_tuple (V_ident al, V_ident bl))))
+        E_tuple (a', b')
     | T.E_fun (p, e) ->
         let p', ctx' = pattern ctx p in
         let e' = expression ctx' e in
-        E_value (V_fun (p', e'))
+        E_value (mk_fun p' e')
+    | T.E_apply (T.E_ident id, args, _) ->
+        let args' = List.map ~f:(expression ctx) args in
+        E_apply (E_value (Ctx.lookup_identifier ctx id), args')
     | T.E_apply (f, args, _) ->
         let f' = expression ctx f in
         let fl = fresh_identifier () in
         let args' = List.map ~f:(expression ctx) args in
-        E_let (P_ident fl, f', E_apply (V_ident fl, args'))
+        E_let (P_ident fl, f', E_apply (E_value (V_ident fl), args'))
     | T.E_constr (c, None) ->
         E_value (V_int (Ctx.lookup_constructor ctx c))
     | T.E_constr (c, Some e) ->
         let l = fresh_identifier () in
         E_let (P_ident l, expression ctx e,
           E_value (V_tag (Ctx.lookup_constructor ctx c, V_ident l)))
+    | T.E_match (T.E_ident id, cases, _) ->
+        let cases' = List.map cases ~f:(fun (p, body) ->
+          let p', ctx' = pattern ctx p in
+          let body' = expression ctx' body in
+          p', body') in
+        E_switch (Ctx.lookup_identifier ctx id, cases')
     | T.E_match (e, cases, _) ->
         let e' = expression ctx e in
         let el = fresh_identifier () in
