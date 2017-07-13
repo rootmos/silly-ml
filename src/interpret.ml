@@ -88,17 +88,11 @@ let rec reduce ?(l=0) ctx e =
       let rev_args, ctx' = List.fold_left args ~init:([], ctx)
         ~f:(fun (args, ctx) a ->
           let a', ctx' = reduce ~l ctx a in (a' :: args, ctx')) in
-      let args' = List.rev rev_args |> List.map
-        ~f:(function
-          | L.V_ident id -> Ctx.lookup ctx id
-          | v -> v) in
+      let args' = List.rev rev_args |> List.map ~f:reduce_value in
       begin match id, args' with
-      | "(+)", L.V_int a :: L.V_int b :: [] ->
-          L.V_int (a + b), ctx
-      | "(-)", L.V_int a :: L.V_int b :: [] ->
-          L.V_int (a - b), ctx
-      | "(*)", L.V_int a :: L.V_int b :: [] ->
-          L.V_int (a * b), ctx
+      | "(+)", L.V_int a :: L.V_int b :: [] -> L.V_int (a + b), ctx
+      | "(-)", L.V_int a :: L.V_int b :: [] -> L.V_int (a - b), ctx
+      | "(*)", L.V_int a :: L.V_int b :: [] -> L.V_int (a * b), ctx
       | "print_int", L.V_int a :: [] -> print_int a; L.V_unit, ctx
       | "print_newline", L.V_unit :: [] -> print_newline (); L.V_unit, ctx
       | _ -> raise @@ Interpret_exception Unreachable end
@@ -107,11 +101,10 @@ let rec reduce ?(l=0) ctx e =
   | L.E_apply (L.E_value (L.V_closure (p, body, cs)), a :: args) ->
       let a', _ = reduce ~l ctx a in
       let cs' = capture_pattern_match ctx p a' in
-      let ctx' = (Ctx.extend ctx (cs'@cs)) in
-      let body', ctx' = reduce ~l ctx' body in
+      let ctx' = Ctx.extend ctx (cs'@cs) in
+      let body', _ = reduce ~l ctx' body in
       reduce ~l ctx' @@ L.E_apply (L.E_value body', args)
-  | L.E_apply (L.E_value v, []) ->
-      v, ctx
+  | L.E_apply (L.E_value v, []) -> v, ctx
   | L.E_apply (_, _) -> raise @@ Interpret_exception Unreachable
   | L.E_switch (L.V_ident id, cases) ->
       reduce ~l ctx @@ L.E_switch (Ctx.lookup ctx id, cases)
