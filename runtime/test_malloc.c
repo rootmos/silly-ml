@@ -11,10 +11,11 @@ struct slice {
     uint64_t* mem;
 };
 
+uint64_t slices;
 struct slice slice[MAX_SLICES];
 
 void initialize_slices() {
-    for (uint64_t i = 0; i < MAX_SLICES; ++i) {
+    for (uint64_t i = 0; i < slices; ++i) {
         slice[i].alive = 0;
     }
 }
@@ -57,11 +58,11 @@ void verify(uint64_t i) {
 }
 
 void run(uint64_t n) {
-    for (uint64_t i = 0; i < MAX_SLICES; ++i) {
+    for (uint64_t i = 0; i < slices; ++i) {
         take_action(i);
     }
 
-    for (uint64_t i = 0; i < MAX_SLICES; ++i) {
+    for (uint64_t i = 0; i < slices; ++i) {
         verify(i);
     }
 }
@@ -71,7 +72,16 @@ int main() {
     seed_xorshiftplus();
 
     initialize_slices();
-    for (uint64_t n = 0; n < 100; ++n) {
+
+    uint64_t runs = 100;
+    if (getenv("QUICK") != NULL) {
+        runs = 10;
+        slices = 100;
+    } else {
+        slices = MAX_SLICES;
+    }
+
+    for (uint64_t n = 0; n < runs; ++n) {
         run(n);
     }
 
