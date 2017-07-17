@@ -9,6 +9,7 @@ WORKDIR /runtime
 ADD include include
 ADD *.asm ./
 ADD *.c ./
+ADD *.h ./
 ADD Makefile .
 
 ENTRYPOINT ["make"]
