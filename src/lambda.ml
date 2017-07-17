@@ -4,7 +4,7 @@ module T = Typed
 
 type pattern =
   P_int of int
-| P_ident of string
+| P_ident of int
 | P_tuple of pattern * pattern
 | P_unit
 | P_wildcard
@@ -15,7 +15,7 @@ type value =
   V_int of int
 | V_unit
 | V_tuple of value * value
-| V_ident of string
+| V_ident of int
 | V_tag of int * value
 | V_predef of string
 | V_captured_closure of captured_closure
@@ -31,12 +31,12 @@ and expression =
 and captured_closure = {
   cc_p: pattern;
   cc_body: expression;
-  cc_captures: (string * value) list
+  cc_captures: (int * value) list
 } [@@deriving sexp]
 and uncaptured_closure = {
   uc_p: pattern;
   uc_body: expression;
-  uc_free: string list
+  uc_free: int list
 } [@@deriving sexp]
 
 let rec pattern_captures = function
@@ -80,7 +80,7 @@ let format_error = function
 let counter = ref 0
 
 let fresh_identifier () =
-  let id = "L" ^ string_of_int !counter in
+  let id = !counter in
   incr counter; id
 
 let predefined_functions =
@@ -90,7 +90,7 @@ let predefined_functions =
 
 module Ctx = struct
   type t = {
-    identifiers: (string * string) list;
+    identifiers: (string * int) list;
     constructors: (string * int) list
   }
 

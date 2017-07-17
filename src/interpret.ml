@@ -4,19 +4,19 @@ module L = Lambda
 open L
 
 type error =
-  Unbound_value of string
+  Unbound_identifier of int
 | Match_error
 | Unreachable
 exception Interpret_exception of error
 
 let format_error = function
- | Unbound_value id -> sprintf "unbound value %s" id
+ | Unbound_identifier id -> sprintf "unbound identifier %d" id
  | Match_error -> "match error"
  | Unreachable -> "interpreter whoopsie"
 
 module Ctx = struct
   type t = {
-    bindings: (string * value) list
+    bindings: (int * value) list
   } [@@deriving sexp]
 
   let empty = { bindings = [] }
@@ -27,7 +27,7 @@ module Ctx = struct
   let lookup ctx id =
     match List.Assoc.find ~equal:(=) ctx.bindings id with
     | Some t -> t
-    | None -> raise @@ Interpret_exception (Unbound_value id)
+    | None -> raise @@ Interpret_exception (Unbound_identifier id)
 end
 
 let rec pattern_match ctx p v =

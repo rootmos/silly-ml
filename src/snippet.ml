@@ -19,7 +19,7 @@ let run s =
   Lambda.sexp_of_t lambda |> Sexp.to_string_hum |> print_endline;
 
   let x, _ = Interpret.interpret lambda in
-  Interpret.format_value x |> print_endline;
+  Interpret.I.to_string x |> print_endline;
 
   print_newline ()
 
