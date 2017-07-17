@@ -5,7 +5,6 @@ exit:
     movq $60, %rax
     syscall
 
-
 # input:
 #   %rdi - fd
 #   %rsi - buf

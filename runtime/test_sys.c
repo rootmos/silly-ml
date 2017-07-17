@@ -1,6 +1,7 @@
 #include <runtime.h>
+#include "test.h"
 
 int main() {
-    write(stdout, "I'm a test write!\n", 18);
+    assert(write(stdout, "I'm a test write!\n", 18) == 18);
     return 0;
 }

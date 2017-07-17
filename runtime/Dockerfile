@@ -10,6 +10,8 @@ ADD include include
 ADD *.asm ./
 ADD *.c ./
 ADD *.h ./
+ADD *.sh ./
+RUN chmod +x *.sh
 ADD Makefile .
 
 ENTRYPOINT ["make"]

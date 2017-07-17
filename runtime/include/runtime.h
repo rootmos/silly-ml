@@ -6,4 +6,6 @@
 #include <rnd.h>
 #include <str.h>
 
+const char* getenv(const char*);
+
 #endif
