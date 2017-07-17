@@ -11,7 +11,8 @@ ADD *.asm ./
 ADD *.c ./
 ADD *.h ./
 ADD *.sh ./
-RUN chmod +x *.sh
+ADD *.expected ./
+ADD *.env ./
 ADD Makefile .
 
 ENTRYPOINT ["make"]
