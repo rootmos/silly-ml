@@ -44,3 +44,33 @@ strlen_loop:
     jmp strlen_loop
 strlen_done:
     ret
+
+.global strcmp
+strcmp:
+
+strcmp_loop:
+    movb (%rdi), %al
+    movb (%rsi), %bl
+
+    cmp %al, %bl
+    jg strcmp_first
+    jl strcmp_second
+
+    test %al, %al
+    jz strcmp_equal
+
+    inc %rdi
+    inc %rsi
+    jmp strcmp_loop
+
+strcmp_first:
+    movq $-1, %rax
+    ret
+
+strcmp_second:
+    movq $1, %rax
+    ret
+
+strcmp_equal:
+    movq $0, %rax
+    ret

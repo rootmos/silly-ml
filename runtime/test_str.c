@@ -13,8 +13,17 @@ void test_strlen() {
     assert(strlen("") == 0);
 }
 
+void test_strcmp() {
+    assert(strcmp("a", "a") == 0);
+    assert(strcmp("a", "b") == -1);
+    assert(strcmp("c", "b") == 1);
+    assert(strcmp("a", "ab") == -1);
+    assert(strcmp("ab", "a") == 1);
+}
+
 void _start() {
     test_strlen();
     test_itos();
+    test_strcmp();
     exit(0);
 }

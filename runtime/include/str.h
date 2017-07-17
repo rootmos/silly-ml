@@ -6,5 +6,6 @@
 const char* itos(uint64_t);
 
 size_t strlen(const char*);
+int strcmp(const char*, const char*);
 
 #endif
