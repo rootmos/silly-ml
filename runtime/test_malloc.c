@@ -1,4 +1,5 @@
 #include <runtime.h>
+#include "test.h"
 
 #define MAX_DATA_SIZE 1000
 #define MAX_SLICES 10000
@@ -49,7 +50,7 @@ void verify(uint64_t i) {
     if (slice[i].alive) {
         for (uint64_t j = 0; j < slice[i].size; ++j) {
             if (slice[i].mem[j] != slice[i].data[j]) {
-                exit(1);
+                abort();
             }
         }
     }
@@ -66,8 +67,7 @@ void run(uint64_t n) {
 }
 
 
-void _start() {
-    setup_heap();
+int main() {
     seed_xorshiftplus();
 
     initialize_slices();
@@ -75,5 +75,5 @@ void _start() {
         run(n);
     }
 
-    exit(0);
+    return 0;
 }

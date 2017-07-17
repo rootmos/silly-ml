@@ -11,7 +11,7 @@ seed_xorshiftplus:
     movq $318, %rax            # sys_getrandom
     movq $xorshift_state, %rdi # buf
     movq $16, %rsi             # size
-    movq $0x2, %rdx            # flags := GRND_RANDOM (0x0002)
+    movq $0x0, %rdx            # flags := 0
     syscall
     ret
 

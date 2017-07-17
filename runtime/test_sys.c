@@ -1,6 +1,6 @@
 #include <runtime.h>
 
-void _start() {
+int main() {
     write(stdout, "I'm a test write!\n", 18);
-    exit(0);
+    return 0;
 }

@@ -15,11 +15,11 @@ uint64_t reference_xorshift128plus(void) {
     return s[1] + y;
 }
 
-void _start() {
+int main() {
     set_seed_xorshiftplus(s[0], s[1]);
     if (xorshiftplus() == reference_xorshift128plus()) {
-        exit(0);
+        return 0;
     } else {
-        exit(1);
+        return 1;
     }
 }

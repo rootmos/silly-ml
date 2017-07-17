@@ -11,7 +11,7 @@ test: test_malloc.run test_str.run test_sys.run test_rnd.run
 %.bin: %.c libruntime.a
 	gcc -I./include -O0 -g -fno-builtin -o $@ -static -nostdlib -L. $< -lruntime
 
-libruntime.a: sys.o mem.o rnd.o str.o
+libruntime.a: sys.o mem.o rnd.o str.o runtime.o
 	ar cr $@ $^
 
 .PRECIOUS: %.o %.bin %.a

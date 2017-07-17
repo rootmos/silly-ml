@@ -22,9 +22,9 @@ void test_strcmp() {
     assert(strcmp("ab", "a") == 1);
 }
 
-void _start() {
+int main() {
     test_strlen();
     test_itos();
     test_strcmp();
-    exit(0);
+    return 0;
 }
