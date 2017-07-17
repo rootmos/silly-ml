@@ -86,8 +86,8 @@ let rec reduce ?(l=0) ctx e =
       | "(+)", V_int a :: V_int b :: [] -> V_int (a + b), ctx
       | "(-)", V_int a :: V_int b :: [] -> V_int (a - b), ctx
       | "(*)", V_int a :: V_int b :: [] -> V_int (a * b), ctx
-      | "print_int", V_int a :: [] -> print_int a; V_unit, ctx
-      | "print_newline", V_unit :: [] -> print_newline (); V_unit, ctx
+      | "print_int", V_int a :: [] -> Pervasives.print_int a; V_unit, ctx
+      | "print_newline", V_unit :: [] -> Pervasives.print_newline (); V_unit, ctx
       | _ -> raise @@ Interpret_exception Unreachable end
   | E_apply (E_value (V_ident id), args) ->
       reduce ~l ctx @@ E_apply (E_value (Ctx.lookup ctx id), args)
