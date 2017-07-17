@@ -14,6 +14,7 @@ void test_strlen() {
 }
 
 void test_strcmp() {
+    assert(strcmp("", "") == 0);
     assert(strcmp("a", "a") == 0);
     assert(strcmp("a", "b") == -1);
     assert(strcmp("c", "b") == 1);
