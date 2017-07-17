@@ -18,13 +18,21 @@ let run s =
   let lambda, _ = Lambda.transform_to_lambda typed' in
   Lambda.sexp_of_t lambda |> Sexp.to_string_hum |> print_endline;
 
-  let x, _ = Interpret.interpret lambda in
-  Interpret.I.to_string x |> print_endline;
+  let anf = Anf.transform_to_anf lambda in
+  Anf.sexp_of_t anf |> Sexp.to_string_hum |> print_endline;
 
-  print_newline ()
+  (*let x, _ = Interpret.interpret lambda in*)
+  (*Interpret.I.to_string x |> print_endline;*)
+
+  (*let y = Backend.go anf in*)
+  (*Backend.sexp_of_listing y |> Sexp.to_string_hum |> print_endline;*)
+
+  Pervasives.print_newline ()
 
 let () = Config.set_verbose true
 
 let () = run "let f a = a;; f ();;"
 (*let () = run "type foo = A | B of int;; let f x = match x with A -> 0 | B i -> i;; f (B 3);;"*)
-let () = run "let f x y = x + y;; let g = f 1;; let h = f 2;; g 2;;"
+(*let () = run "let f x y = x + y;; let g = f 1;; let h = f 2;; g 2;;"*)
+
+let () = run "(1, 2);;"
