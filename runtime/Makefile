@@ -1,5 +1,5 @@
 .PHONY: test
-test: test_malloc.run test_str.run test_sys.run test_rnd.run
+test: test_malloc.run test_str.run test_sys.run test_rnd.run test_runtime.run
 
 %.run: %.bin
 	./run-test.sh $<
