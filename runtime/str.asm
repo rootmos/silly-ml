@@ -31,3 +31,16 @@ itos_loop:
 itos_done:
     movq %rcx, %rax
     ret
+
+.global strlen
+strlen:
+    movq $0, %rax
+strlen_loop:
+    movb (%rdi), %bl
+    test %bl, %bl
+    jz strlen_done
+    inc %rax
+    inc %rdi
+    jmp strlen_loop
+strlen_done:
+    ret

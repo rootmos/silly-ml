@@ -9,7 +9,7 @@ test: test_malloc.run test_str.run test_sys.run test_rnd.run
 	fi
 
 %.bin: %.c libruntime.a
-	gcc -I./include -O0 -g -o $@ -static -nostdlib -L. $< -lruntime
+	gcc -I./include -O0 -g -fno-builtin -o $@ -static -nostdlib -L. $< -lruntime
 
 libruntime.a: sys.o mem.o rnd.o str.o
 	ar cr $@ $^

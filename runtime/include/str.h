@@ -5,4 +5,6 @@
 
 const char* itos(uint64_t);
 
+size_t strlen(const char*);
+
 #endif
