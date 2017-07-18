@@ -1,4 +1,5 @@
 open Core_kernel.Std
+open Printf
 module A = Anf
 
 type register = RAX | RBX | RCX | RDX | R8 | R9 | R10 | RDI | RSI
@@ -86,45 +87,6 @@ let fresh_identifier () =
 let fresh_continuation_label =
   sprintf "__k_%d" (fresh_identifier ())
 
-let mk_closure { A.uc_p; A.uc_free; A.uc_body } =
-  let pattern_captures = A.pattern_captures uc_p in
-  let offsets = uc_free @ pattern_captures |> List.dedup
-    |> List.mapi ~f:(fun o id -> (id, o)) in
-  let i = fresh_identifier () in
-  let label = sprintf "__f_%d" i in
-  {
-    capture = {
-      label = sprintf "__f_%d_capture" i;
-      code =
-        let parent_offsets = RDX in
-        let capture_reg = RBX in
-        let dereference_key o =
-          Dereference (words ((2*o) + 1), capture_reg) in
-        let dereference_value o =
-          Dereference (words ((2*o) + 2), capture_reg) in
-        let size = words @@ (2 * List.length offsets) + 1 in
-        let ls = malloc
-          ~precious:[parent_offsets]
-          ~target:(Register capture_reg) size in
-        let ls = ls @ [ Mov (Label label, Dereference (0, capture_reg)) ] in
-        let os = List.map offsets ~f:(fun (id, o) ->
-          Mov (Constant id, dereference_key o) ::
-            if List.mem pattern_captures id ~equal:(=)
-            then [ Mov (Constant 0, dereference_value o) ]
-            else call
-              ~precious:[capture_reg; parent_offsets]
-              ~target:(dereference_value o)
-              "lookup_identifier" [Register parent_offsets; Constant id]) in
-        let ls = ls @ List.concat os in
-        ls @ [ Mov (Register capture_reg, Register RAX); Ret ]
-    };
-    eval = {
-      label;
-      code = []
-    };
-    offsets
-  }
-
 let rec go_value ?(target=RAX) = function
   | A.V_int i ->
       let j = (i lsl 1) lor 0b1 in
@@ -148,21 +110,96 @@ let rec go_value ?(target=RAX) = function
   | A.V_ident _ -> []
   | _ -> failwith "not implemented: go_value"
 
-let rec go ?(ctx=Ctx.empty) ?(k="__done") l =
+let rec mk_closure ~ctx { A.uc_p; A.uc_free; A.uc_body } =
+  let pattern_captures = A.pattern_captures uc_p in
+  let offsets = uc_free @ pattern_captures |> List.dedup
+    |> List.mapi ~f:(fun o id -> (id, o)) in
+  let i = fresh_identifier () in
+  let label = sprintf "__f_%d" i in
+  let capture_reg = RBX in
+  let dereference_key o = Dereference (words ((2*o) + 1), capture_reg) in
+  let dereference_value o = Dereference (words ((2*o) + 2), capture_reg) in
+  let body, ctx = go ~ctx uc_body in
+  {
+    capture = {
+      label = sprintf "__f_%d_capture" i;
+      code =
+        let parent_offsets = RDX in
+        let size = words @@ (2 * List.length offsets) + 1 in
+        let ls = malloc
+          ~precious:[parent_offsets]
+          ~target:(Register capture_reg) size in
+        let ls = ls @ [ Mov (Label label, Dereference (0, capture_reg)) ] in
+        let os = List.map offsets ~f:(fun (id, o) ->
+          Mov (Constant id, dereference_key o) ::
+            if List.mem pattern_captures id ~equal:(=)
+            then [ Mov (Constant 0, dereference_value o) ]
+            else call
+              ~precious:[capture_reg; parent_offsets]
+              ~target:(dereference_value o)
+              "lookup_identifier" [Register parent_offsets; Constant id]) in
+        let ls = ls @ List.concat os in
+        ls @ [ Mov (Register capture_reg, Register RAX); Ret ]
+    };
+    eval = {
+      label;
+      code =
+        let input = RAX in
+        [
+          match uc_p with
+          | A.P_ident id -> 
+              let o = List.Assoc.find_exn offsets id ~equal:(=) in
+              Mov (Register input, dereference_value o)
+          | _ -> failwith "pattern not implemented"
+        ] @ body
+    };
+    offsets
+  }, ctx
+and go ?(ctx=Ctx.empty) ?(k="__done") l =
   match l with
   | A.E_value v -> go_value v, ctx
   | A.E_this_and_then { A.this; A.and_then } ->
       let _, ctx = go ~ctx and_then.uc_body in
-      let c = mk_closure and_then in
+      let c, ctx = mk_closure ctx and_then in
       let ctx = Ctx.add ctx c in
       let l, ctx = go ~ctx this in
       l @ [Jmp c.eval.label], ctx
   | A.E_uncaptured_closure uc ->
-      let c = mk_closure uc in
+      let c, ctx = mk_closure ctx uc in
       let ctx = Ctx.add ctx c in
       [Call c.capture.label], ctx
   | A.E_apply (a, b) ->
       [], ctx
   | _ -> failwith "not implemented: go"
 
-(*let output ctx =*)
+let output ctx =
+  let indent s = "  " ^ s in
+  let register = function
+    | RAX -> "%rax"
+    | RBX -> "%rbx"
+    | RCX -> "%rcx"
+    | RDX -> "%rdx"
+    | RDI -> "%rdi"
+    | RSI -> "%rsi"
+    | R8  -> "%r8"
+    | R9  -> "%r9"
+    | R10 -> "%r10" in
+  let operand = function
+    | Register r -> register r
+    | Constant i -> sprintf "$%d" i
+    | Label l -> l
+    | Dereference (i, r) -> sprintf "%d(%s)" i (register r) in
+  let op = function
+    | Mov (o1, o2) -> sprintf "movq %s %s" (operand o1) (operand o2)
+    | Call s -> sprintf "call %s" s
+    | Push o -> sprintf "pushq %s" (operand o)
+    | Pop r -> sprintf "popq %s" (register r)
+    | Jmp l -> sprintf "jmp %s" l
+    | Ret -> sprintf "ret" in
+  let listing = List.map ~f:(Fn.compose indent op) in
+  let labelled_listing { label; code } = [""; label ^ ":"] @ listing code in
+  let closure { capture; eval } =
+    labelled_listing capture @ labelled_listing eval in
+  List.map ~f:closure ctx.Ctx.closures
+    |> List.concat
+    |> String.concat ~sep:"\n"

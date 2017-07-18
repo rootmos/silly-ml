@@ -28,6 +28,8 @@ let run s =
   Backend.sexp_of_listing y |> Sexp.to_string_hum |> print_endline;
   Backend.Ctx.sexp_of_t ctx |> Sexp.to_string_hum |> print_endline;
 
+  Backend.output ctx |> print_string;
+
   Pervasives.print_newline ()
 
 let () = Config.set_verbose true
