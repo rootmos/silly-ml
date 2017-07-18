@@ -24,15 +24,19 @@ let run s =
   (*let x, _ = Interpret.interpret lambda in*)
   (*Interpret.I.to_string x |> print_endline;*)
 
-  (*let y = Backend.go anf in*)
-  (*Backend.sexp_of_listing y |> Sexp.to_string_hum |> print_endline;*)
+  let y, ctx = Backend.go anf in
+  Backend.sexp_of_listing y |> Sexp.to_string_hum |> print_endline;
+  Backend.Ctx.sexp_of_t ctx |> Sexp.to_string_hum |> print_endline;
 
   Pervasives.print_newline ()
 
 let () = Config.set_verbose true
 
 let () = run "let f a = a;; f ();;"
+(*let () = run "let f a b = a + b;; f 1 2;;"*)
+(*let () = run "print_int 3;;"*)
+(*let () = run "(1, 2);;"*)
+
 (*let () = run "type foo = A | B of int;; let f x = match x with A -> 0 | B i -> i;; f (B 3);;"*)
 (*let () = run "let f x y = x + y;; let g = f 1;; let h = f 2;; g 2;;"*)
 
-let () = run "(1, 2);;"

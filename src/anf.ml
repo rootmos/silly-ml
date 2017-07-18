@@ -18,7 +18,6 @@ type value =
 | V_ident of int
 | V_tag of int * value
 | V_predef of string
-| V_captured_closure of captured_closure
   [@@deriving sexp]
 and expression =
   E_value of value
@@ -48,6 +47,12 @@ type t = expression
 type error = Unreachable
 exception Anf_exception of error
 
+let rec pattern_captures = function
+  | P_int _ | P_unit | P_wildcard -> []
+  | P_ident id -> [id]
+  | P_tag (_, v) -> pattern_captures v
+  | P_tuple (a, b) -> pattern_captures a @ pattern_captures b
+
 let transform_to_anf lambda =
   let open List in
 
@@ -67,10 +72,7 @@ let transform_to_anf lambda =
   | L.V_tag (t, v) -> V_tag (t, value v)
   | L.V_predef f -> V_predef f
   | L.V_captured_closure { L.cc_p; L.cc_body; L.cc_captures } ->
-      let cc_p = pattern cc_p
-      and cc_body = expression cc_body
-      and cc_captures = cc_captures >>| fun (i, v) -> (i, value v) in
-      V_captured_closure { cc_p; cc_body; cc_captures }
+      raise @@ Anf_exception Unreachable
   and expression = function
     L.E_value v -> E_value (value v)
   | L.E_tuple (a, b) ->
