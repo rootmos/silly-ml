@@ -24,11 +24,11 @@ let run s =
   (*let x, _ = Interpret.interpret lambda in*)
   (*Interpret.I.to_string x |> print_endline;*)
 
-  let y, ctx = Backend.go anf in
-  Backend.sexp_of_listing y |> Sexp.to_string_hum |> print_endline;
-  Backend.Ctx.sexp_of_t ctx |> Sexp.to_string_hum |> print_endline;
+  (*let y, ctx = Backend.go anf in*)
+  (*Backend.sexp_of_listing y |> Sexp.to_string_hum |> print_endline;*)
+  (*Backend.Ctx.sexp_of_t ctx |> Sexp.to_string_hum |> print_endline;*)
 
-  Backend.output ctx |> print_string;
+  Backend.anf_to_asm anf |> print_string;
 
   Pervasives.print_newline ()
 

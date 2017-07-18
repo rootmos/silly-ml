@@ -20,7 +20,7 @@ type op =
 | Call of string
 | Push of operand
 | Pop of register
-| Jmp of label
+| Jmp of operand
 | Ret
 [@@deriving sexp]
 
@@ -87,7 +87,7 @@ let fresh_identifier () =
 let fresh_continuation_label =
   sprintf "__k_%d" (fresh_identifier ())
 
-let rec go_value ?(target=RAX) = function
+let rec go_value ?(precious=[]) ?(target=RAX) = function
   | A.V_int i ->
       let j = (i lsl 1) lor 0b1 in
       [Mov (Constant j, Register target)]
@@ -107,7 +107,8 @@ let rec go_value ?(target=RAX) = function
       | _ -> l
       end
   | A.V_unit -> go_value @@ A.V_int 0
-  | A.V_ident _ -> []
+  | A.V_ident id ->
+      call ~precious "lookup_identifier" [Register RBX; Constant id]
   | _ -> failwith "not implemented: go_value"
 
 let rec mk_closure ~ctx { A.uc_p; A.uc_free; A.uc_body } =
@@ -124,7 +125,7 @@ let rec mk_closure ~ctx { A.uc_p; A.uc_free; A.uc_body } =
     capture = {
       label = sprintf "__f_%d_capture" i;
       code =
-        let parent_offsets = RDX in
+        let parent_offsets = RDI in
         let size = words @@ (2 * List.length offsets) + 1 in
         let ls = malloc
           ~precious:[parent_offsets]
@@ -147,7 +148,7 @@ let rec mk_closure ~ctx { A.uc_p; A.uc_free; A.uc_body } =
         let input = RAX in
         [
           match uc_p with
-          | A.P_ident id -> 
+          | A.P_ident id ->
               let o = List.Assoc.find_exn offsets id ~equal:(=) in
               Mov (Register input, dereference_value o)
           | _ -> failwith "pattern not implemented"
@@ -155,7 +156,7 @@ let rec mk_closure ~ctx { A.uc_p; A.uc_free; A.uc_body } =
     };
     offsets
   }, ctx
-and go ?(ctx=Ctx.empty) ?(k="__done") l =
+and go ?(ctx=Ctx.empty) ?(precious=[]) ?(k="__done") l =
   match l with
   | A.E_value v -> go_value v, ctx
   | A.E_this_and_then { A.this; A.and_then } ->
@@ -163,17 +164,22 @@ and go ?(ctx=Ctx.empty) ?(k="__done") l =
       let c, ctx = mk_closure ctx and_then in
       let ctx = Ctx.add ctx c in
       let l, ctx = go ~ctx this in
-      l @ [Jmp c.eval.label], ctx
+      call ~precious:[RDI] c.capture.label [Register RDI]
+        @ l
+        @ [Jmp (Label c.eval.label)], ctx
   | A.E_uncaptured_closure uc ->
       let c, ctx = mk_closure ctx uc in
       let ctx = Ctx.add ctx c in
-      [Call c.capture.label], ctx
+      call ~precious c.capture.label [Constant 0], ctx
   | A.E_apply (a, b) ->
-      [], ctx
+      go_value ~target:RBX a @ go_value ~precious:[RBX] ~target:RAX b @ [
+        Jmp (Dereference (0, RBX))
+      ], ctx
   | _ -> failwith "not implemented: go"
 
-let output ctx =
-  let indent s = "  " ^ s in
+module Output = struct
+  let indent s = "  " ^ s
+
   let register = function
     | RAX -> "%rax"
     | RBX -> "%rbx"
@@ -183,23 +189,37 @@ let output ctx =
     | RSI -> "%rsi"
     | R8  -> "%r8"
     | R9  -> "%r9"
-    | R10 -> "%r10" in
+    | R10 -> "%r10"
+
   let operand = function
     | Register r -> register r
     | Constant i -> sprintf "$%d" i
     | Label l -> l
-    | Dereference (i, r) -> sprintf "%d(%s)" i (register r) in
+    | Dereference (i, r) -> sprintf "%d(%s)" i (register r)
+
   let op = function
     | Mov (o1, o2) -> sprintf "movq %s %s" (operand o1) (operand o2)
     | Call s -> sprintf "call %s" s
     | Push o -> sprintf "pushq %s" (operand o)
     | Pop r -> sprintf "popq %s" (register r)
-    | Jmp l -> sprintf "jmp %s" l
-    | Ret -> sprintf "ret" in
-  let listing = List.map ~f:(Fn.compose indent op) in
-  let labelled_listing { label; code } = [""; label ^ ":"] @ listing code in
+    | Jmp o -> sprintf "jmp %s" (operand o)
+    | Ret -> sprintf "ret"
+
+  let listing = List.map ~f:(Fn.compose indent op)
+
+  let labelled_listing { label; code } = [""; label ^ ":"] @ listing code
+
   let closure { capture; eval } =
-    labelled_listing capture @ labelled_listing eval in
-  List.map ~f:closure ctx.Ctx.closures
-    |> List.concat
-    |> String.concat ~sep:"\n"
+    labelled_listing capture @ labelled_listing eval
+
+  let of_ctx ctx =
+    List.map ~f:closure ctx.Ctx.closures
+      |> List.concat
+      |> String.concat ~sep:"\n"
+end
+
+let anf_to_asm l =
+  let code, ctx = go l in
+  let main = Output.labelled_listing { label = "main"; code }
+    |> String.concat ~sep:"\n" in
+  Output.of_ctx ctx ^ main
