@@ -2,7 +2,7 @@ open Core_kernel.Std
 open Printf
 module A = Anf
 
-type register = RAX | RBX | RCX | RDX | R8 | R9 | R10 | RDI | RSI
+type register = RAX | RBX | RCX | RDX | R8 | R9 | R10 | RDI | RSI | RSP
 [@@deriving sexp]
 
 type label = string
@@ -21,6 +21,8 @@ type op =
 | Push of operand
 | Pop of register
 | Jmp of operand
+| Add of operand * operand
+| Sub of operand * operand
 | Ret
 [@@deriving sexp]
 
@@ -42,6 +44,29 @@ let push_pop ~precious l =
     @ l
     @ (rev precious >>| fun r -> Pop r)
 
+let words n = 8 * n
+
+module Local = struct
+  type t = int String.Map.t
+
+  let scope_open init =
+    let t = List.mapi init ~f:(fun i (n, v) -> (n, words i))
+      |> String.Map.of_alist_exn in
+    let size = words @@ String.Map.length t in
+    let ls = [Sub (Constant size, Register RSP)] in
+    let ls = ls @ List.mapi init ~f:(fun i (n, v) ->
+      Mov (v, Dereference (words i, RSP))) in
+    t, ls
+
+  let scope_close t =
+    let size = words @@ String.Map.length t in
+    [Add (Constant size, Register RSP)]
+
+  let lookup t n =
+    let offset = String.Map.find_exn t n in
+    Dereference (offset, RSP)
+end
+
 let call_registers = [RDI; RSI; RDX; RCX; R8; R9]
 
 let call ?(target=Register RAX) ?(precious=[]) l args =
@@ -56,7 +81,6 @@ let call ?(target=Register RAX) ?(precious=[]) l args =
 let malloc ?(target=Register RAX) ?(precious=[]) size =
   call ~target ~precious "malloc" [Constant size]
 
-let words n = 8 * n
 
 type closure = {
   capture: labelled_listing;
@@ -117,40 +141,44 @@ let rec mk_closure ~ctx { A.uc_p; A.uc_free; A.uc_body } =
     |> List.mapi ~f:(fun o id -> (id, o)) in
   let i = fresh_identifier () in
   let label = sprintf "__f_%d" i in
-  let capture_reg = RBX in
-  let dereference_key o = Dereference (words ((2*o) + 1), capture_reg) in
-  let dereference_value o = Dereference (words ((2*o) + 2), capture_reg) in
+  let key_offset o = words ((2*o) + 1) in
+  let value_offset o = words ((2*o) + 2) in
   let body, ctx = go ~ctx uc_body in
   {
     capture = {
       label = sprintf "__f_%d_capture" i;
       code =
-        let parent_offsets = RDI in
+        let local, ls = Local.scope_open [
+          ("parent_offset", Register RDI);
+          ("new_capture", Constant 0);
+        ] in
+        let parent_offsets = Local.lookup local "parent_offset" in
+        let new_capture = Local.lookup local "new_capture" in
         let size = words @@ (2 * List.length offsets) + 1 in
-        let ls = malloc
-          ~precious:[parent_offsets]
-          ~target:(Register capture_reg) size in
-        let ls = ls @ [ Mov (Label label, Dereference (0, capture_reg)) ] in
+        let ls = ls @ malloc ~target:new_capture size in
+        let ls = ls @ [ Mov (Label label, Dereference (0, RAX)) ] in
         let os = List.map offsets ~f:(fun (id, o) ->
-          Mov (Constant id, dereference_key o) ::
+          [ Mov (new_capture, Register RBX);
+            Mov (Constant id, Dereference (key_offset o, RBX)) ] @
             if List.mem pattern_captures id ~equal:(=)
-            then [ Mov (Constant 0, dereference_value o) ]
-            else call
-              ~precious:[capture_reg; parent_offsets]
-              ~target:(dereference_value o)
-              "lookup_identifier" [Register parent_offsets; Constant id]) in
+            then [ Mov (Constant 0, Dereference (value_offset o, RBX)) ]
+            else
+              call "lookup_identifier" [parent_offsets; Constant id]
+                @ [ Mov (new_capture, Register RBX);
+                    Mov (Register RAX, (Dereference (value_offset o, RBX)))]  ) in
         let ls = ls @ List.concat os in
-        ls @ [ Mov (Register capture_reg, Register RAX); Ret ]
+        let ls = ls @ [ Mov (new_capture, Register RAX) ] in
+        let ls = ls @ Local.scope_close local in
+        ls @ [ Ret ]
     };
     eval = {
       label;
       code =
-        let input = RAX in
         [
           match uc_p with
           | A.P_ident id ->
               let o = List.Assoc.find_exn offsets id ~equal:(=) in
-              Mov (Register input, dereference_value o)
+              Mov (Register RDI, (Dereference (value_offset o, RSI)))
           | _ -> failwith "pattern not implemented"
         ] @ body
     };
@@ -190,6 +218,7 @@ module Output = struct
     | R8  -> "%r8"
     | R9  -> "%r9"
     | R10 -> "%r10"
+    | RSP -> "%rsp"
 
   let operand = function
     | Register r -> register r
@@ -199,6 +228,8 @@ module Output = struct
 
   let op = function
     | Mov (o1, o2) -> sprintf "movq %s %s" (operand o1) (operand o2)
+    | Add (o1, o2) -> sprintf "addq %s %s" (operand o1) (operand o2)
+    | Sub (o1, o2) -> sprintf "subq %s %s" (operand o1) (operand o2)
     | Call s -> sprintf "call %s" s
     | Push o -> sprintf "pushq %s" (operand o)
     | Pop r -> sprintf "popq %s" (register r)
@@ -222,4 +253,4 @@ let anf_to_asm l =
   let code, ctx = go l in
   let main = Output.labelled_listing { label = "main"; code }
     |> String.concat ~sep:"\n" in
-  Output.of_ctx ctx ^ main
+  Output.of_ctx ctx ^ "\n" ^ main
