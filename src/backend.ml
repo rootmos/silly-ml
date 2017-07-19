@@ -35,6 +35,7 @@ type listing = op list
 [@@deriving sexp]
 
 type labelled_listing = {
+  global: bool;
   label: label;
   code: listing
 } [@@deriving sexp]
@@ -225,6 +226,7 @@ let rec mk_closure ~ctx { A.uc_p; A.uc_free; A.uc_body } =
   let body, ctx = go ~ctx uc_body in
   {
     capture = {
+      global = false;
       label = sprintf "__f_%d_capture" i;
       code =
         Local.(
@@ -246,6 +248,7 @@ let rec mk_closure ~ctx { A.uc_p; A.uc_free; A.uc_body } =
           all_ignore os >> mov new_capture (reg rax)) |> Local.ret
     };
     eval = {
+      global = false;
       label = l;
       code =
         [
@@ -288,6 +291,7 @@ and go ?(ctx=Ctx.empty) ?(precious=[]) ?(k="__done") l =
 
 
 let lookup_identifier = {
+  global = false;
   label = "lookup_identifier";
   code = Listing.(
     let id = reg rdi in
@@ -341,8 +345,13 @@ module Output = struct
 
   let listing = List.map ~f:(fun o -> indent o ^ op o)
 
-  let labelled_listing { label; code } =
-    [""; label ^ ":"] @ listing code
+  let labelled_listing { global; label; code } =
+    List.concat [
+      [ "" ];
+      if global then [".global " ^ label] else [];
+      [label ^ ":"];
+      listing code
+    ]
 
   let closure { capture; eval } =
     labelled_listing capture @ labelled_listing eval
@@ -359,6 +368,7 @@ let anf_to_asm l =
     Output.of_ctx ctx;
     Output.labelled_listing lookup_identifier
       |> String.concat ~sep:"\n";
-    Output.labelled_listing { label = "main"; code }
-      |> String.concat ~sep:"\n"
+    Output.labelled_listing { global = true; label = "main"; code }
+      |> String.concat ~sep:"\n";
+    ""
   ]

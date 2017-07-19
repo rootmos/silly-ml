@@ -1,5 +1,8 @@
 _build
 *.native
+*.byte
 *.o
 *.a
 *.bin
+*.gdb_history
+a.out
