@@ -26,3 +26,8 @@ clean:
 .PRECIOUS: %.native
 %.native: $(SRC)
 	$(OCB) $@
+
+.PHONY: debug
+debug: compiler.native
+	./$< -L=runtime examples/simple01.silly-ml
+	gdb a.out

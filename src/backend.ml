@@ -19,13 +19,15 @@ type operand =
 
 type op =
   Mov of operand * operand
+| Lea of label * operand
 | Add of operand * operand
 | Sub of operand * operand
 | Cmp of operand * operand
-| Call of string
+| Call of label
 | Push of operand
 | Pop of register
 | Jmp of operand
+| Je of operand
 | Jne of operand
 | Set_label of label
 | Ret
@@ -70,11 +72,13 @@ module Asm_syntax(L: Listing_intf) = struct
   let rsp = RSP
 
   let mov o1 o2 = L.tell @@ if o1 = o2 then [] else [ Mov (o1, o2) ]
+  let lea l o = L.tell [ Lea (l, o) ]
   let sub o1 o2 = L.tell [ Sub (o1, o2) ]
   let add o1 o2 = L.tell [ Add (o1, o2) ]
   let cmp o1 o2 = L.tell [ Cmp (o1, o2) ]
   let set_label l = L.tell [ Set_label l ]
   let jne o = L.tell [ Jne o ]
+  let je o = L.tell [ Je o ]
   let jmp o = L.tell [ Jmp o ]
   let ret = L.tell [ Ret ]
 
@@ -87,8 +91,9 @@ module Asm_syntax(L: Listing_intf) = struct
   let call l args =
     let open List in
     let rs = take call_registers (length args) in
-    let args = zip_exn args rs  >>| fun (o, r) -> Mov (o, Register r) in
-    L.tell @@ args @ [Call l]
+    let args = zip_exn args rs >>| fun (o, r) ->
+      if o = Register r then [] else [ Mov (o, Register r) ] in
+    L.tell @@ concat args @ [Call l]
 
   let malloc size = call "malloc" [Constant size]
   let mallocw w = malloc (words w)
@@ -113,7 +118,8 @@ module Listing = struct
   end)
 
   let (>>) x y = x >>= fun () -> y
-  let run_ (_, ls) = ls
+  let run (a, ls) = a, ls
+  let run_ t = run t |> snd
 end
 
 module Local = struct
@@ -155,12 +161,19 @@ module Local = struct
     mov v o >>
     return o
 
+  let run ?(init=empty) t =
+    let a, s = t init in
+    let ls =
+      if s.size > 0
+      then Listing.(
+        sub (const s.size) (reg rsp) >>
+        insert s.ls >>
+        add (const s.size) (reg rsp) |> run_)
+      else Listing.(insert s.ls |> run_ ) in
+    a, ls
+
   let run_ ?(init=empty) t =
-    let _, s = t init in
-    Listing.(
-      sub (const s.size) (reg rsp) >>
-      insert s.ls >>
-      add (const s.size) (reg rsp) |> run_)
+    run ~init t |> snd
 
   let ret t = run_ t @ [ Ret ]
 end
@@ -187,7 +200,7 @@ let fresh_identifier () =
   let id = !counter in
   incr counter; id
 
-let rec go_value ?(current_closure=Register RBX) ?(target=Register RAX) v =
+let rec go_value ~current_closure ?(target=Register RAX) v =
   let open Local in
   match v with
   | A.V_int i ->
@@ -198,10 +211,10 @@ let rec go_value ?(current_closure=Register RBX) ?(target=Register RAX) v =
       mov (reg rax) m >>
 
       declare >>= fun ma ->
-      go_value ~target:ma a >>
+      go_value ~current_closure ~target:ma a >>
 
       declare >>= fun mb ->
-      go_value ~target:mb b >>
+      go_value ~current_closure ~target:mb b >>
 
       mov m (reg rax) >>
       mov (const 0) (derefw 0 rax) >>
@@ -209,13 +222,13 @@ let rec go_value ?(current_closure=Register RBX) ?(target=Register RAX) v =
       mov mb (derefw 2 rax) >>
 
       mov (reg rax) target
-  | A.V_unit -> go_value ~target @@ A.V_int 0
+  | A.V_unit -> go_value ~current_closure ~target @@ A.V_int 0
   | A.V_ident id ->
       call "lookup_identifier" [current_closure; const id] >>
       mov (reg rax) target
   | _ -> failwith "not implemented: go_value"
 
-let rec mk_closure ~ctx { A.uc_p; A.uc_free; A.uc_body } =
+let rec mk_closure ~current_closure ~ctx { A.uc_p; A.uc_free; A.uc_body } =
   let pattern_captures = A.pattern_captures uc_p in
   let offsets = uc_free @ pattern_captures |> List.dedup
     |> List.mapi ~f:(fun o id -> (id, o)) in
@@ -223,7 +236,7 @@ let rec mk_closure ~ctx { A.uc_p; A.uc_free; A.uc_body } =
   let l = sprintf "__f_%d" i in
   let key_offset o = words ((2*o) + 1) in
   let value_offset o = words ((2*o) + 2) in
-  let body, ctx = go ~ctx uc_body in
+  let body, ctx = go ~current_closure:(Register RSI) ~ctx uc_body in
   {
     capture = {
       global = false;
@@ -234,7 +247,7 @@ let rec mk_closure ~ctx { A.uc_p; A.uc_free; A.uc_body } =
           define (Register RDI) >>= fun parent_offsets ->
           mallocw ((2 * List.length offsets) + 1) >>
           mov (reg rax) new_capture >>
-          mov (label l) (reg rcx) >>
+          lea l (reg rcx) >>
           mov (reg rcx) (derefw 0 rax) >>
           let os = List.map offsets ~f:(fun (id, o) ->
             mov new_capture (reg rbx) >>
@@ -261,32 +274,37 @@ let rec mk_closure ~ctx { A.uc_p; A.uc_free; A.uc_body } =
     };
     offsets
   }, ctx
-and go ?(ctx=Ctx.empty) ?(precious=[]) ?(k="__done") l =
+and go ~current_closure ?(ctx=Ctx.empty) l =
   match l with
-  | A.E_value v -> Local.run_ (go_value v), ctx
+  | A.E_value v -> Local.run_ (go_value ~current_closure v), ctx
   | A.E_this_and_then { A.this; A.and_then } ->
-      let _, ctx = go ~ctx and_then.A.uc_body in
-      let c, ctx = mk_closure ctx and_then in
-      let ctx = Ctx.add ctx c in
-      let l, ctx = go ~ctx this in
-      let ls = Local.(
-        define (reg rdi) >>= fun current_closure ->
-        call c.capture.label [reg rdi] >>
+      let (c, ctx), ls = Local.(
+        define (reg rsi) >>= fun current_closure ->
+        let _, ctx = go ~current_closure ~ctx and_then.A.uc_body in
+        let c, ctx = mk_closure ~current_closure ~ctx and_then in
+        let ctx = Ctx.add ctx c in
+        declare >>= fun next_closure ->
+        call c.capture.label [current_closure] >>
+        mov (reg rax) next_closure >>
+        let l, ctx = go ~current_closure ~ctx this in
         insert l >>
-        mov current_closure (reg rdi)
-      ) |> Local.run_ in
+        mov (reg rax) (reg rdi) >>
+        mov next_closure (reg rsi) >> return (c, ctx)
+      ) |> Local.run in
       ls @ [Jmp (Label c.eval.label)], ctx
   | A.E_uncaptured_closure uc ->
-      let c, ctx = mk_closure ctx uc in
+      let c, ctx = mk_closure ~current_closure ~ctx uc in
       let ctx = Ctx.add ctx c in
-      Listing.(call c.capture.label [reg rdi] |> run_), ctx
+      Listing.(call c.capture.label [current_closure] |> run_), ctx
   | A.E_apply (a, b) ->
-      let ls = Local.(
+      let jo, ls = Local.(
+        define (reg rsi) >>= fun current_closure ->
         declare >>= fun ma ->
-        go_value ~target:ma a >>
-        go_value ~target:(reg rax) b
-      ) |> Local.run_ in
-      ls @ [Jmp (Dereference (0, RBX))], ctx
+        go_value ~current_closure ~target:ma a >>
+        go_value ~current_closure ~target:(reg rdi) b >>
+        mov ma (reg rsi) >> return @@ deref 0 rsi
+      ) |> Local.run in
+      ls @ [Jmp jo], ctx
   | _ -> failwith "not implemented: go"
 
 
@@ -294,12 +312,15 @@ let lookup_identifier = {
   global = false;
   label = "lookup_identifier";
   code = Listing.(
-    let id = reg rdi in
+    let id = reg rsi in
     mov (reg rdi) (reg rbx) >>
     add (const (words 1)) (reg rbx) >>
     set_label "lookup_identifier_loop" >>
     cmp (deref 0 rbx) id >>
-    jne (label "lookup_identifier_loop") >>
+    je (label "lookup_identifier_done") >>
+    add (const (words 2)) (reg rbx) >>
+    jmp (label "lookup_identifier_loop") >>
+    set_label "lookup_identifier_done" >>
     mov (derefw 1 rbx) (reg rax) >>
     ret |> run_)
 }
@@ -326,6 +347,7 @@ module Output = struct
 
   let op = function
     | Mov (o1, o2) -> sprintf "movq %s, %s" (operand o1) (operand o2)
+    | Lea (l, o)   -> sprintf "leaq %s, %s" l (operand o)
     | Add (o1, o2) -> sprintf "addq %s, %s" (operand o1) (operand o2)
     | Sub (o1, o2) -> sprintf "subq %s, %s" (operand o1) (operand o2)
     | Cmp (o1, o2) -> sprintf "cmpq %s, %s" (operand o1) (operand o2)
@@ -336,6 +358,8 @@ module Output = struct
     | Jmp o -> sprintf "jmp %s" (operand o)
     | Jne ((Dereference _) as o)  -> sprintf "jne *%s" (operand o)
     | Jne l -> sprintf "jne %s" (operand l)
+    | Je ((Dereference _) as o)  -> sprintf "je *%s" (operand o)
+    | Je l -> sprintf "je %s" (operand l)
     | Ret -> sprintf "ret"
     | Set_label l -> sprintf "%s:" l
 
@@ -363,7 +387,7 @@ module Output = struct
 end
 
 let anf_to_asm l =
-  let code, ctx = go l in
+  let code, ctx = go ~current_closure:(Constant 0) l in
   String.concat ~sep:"\n" [
     Output.of_ctx ctx;
     Output.labelled_listing lookup_identifier

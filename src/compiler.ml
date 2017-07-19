@@ -1,7 +1,7 @@
 open Core_kernel.Std
 open Printf
 
-let silly_to_asm input output = 
+let silly_to_asm input output =
   let source = In_channel.input_all input in
   let parsed = Parsed_helpers.parse source in
   let typed = Typed.introduce_types parsed in
@@ -11,7 +11,7 @@ let silly_to_asm input output =
   let asm = Backend.anf_to_asm anf in
   Out_channel.output_string output asm
 
-let asm_to_binary ld_search_path asm_fname bin_fname  =
+let asm_to_binary ld_search_path asm_fname bin_fname =
   let obj_fname = Filename.chop_extension asm_fname ^ ".o" in
 
   let as_cmd = sprintf "as -g -o %s %s" obj_fname asm_fname in
