@@ -13,7 +13,7 @@ libruntime.a: sys.o mem.o rnd.o str.o runtime.o
 .PRECIOUS: %.o %.bin %.a
 
 %.o: %.asm
-	as --gstabs -o $@ $< # -a
+	as -g -o $@ $< # -a
 
 .PHONY: clean
 clean:

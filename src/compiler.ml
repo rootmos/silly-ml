@@ -14,7 +14,7 @@ let silly_to_asm input output =
 let asm_to_binary ld_search_path asm_fname bin_fname  =
   let obj_fname = Filename.chop_extension asm_fname ^ ".o" in
 
-  let as_cmd = sprintf "as -o %s %s" obj_fname asm_fname in
+  let as_cmd = sprintf "as -g -o %s %s" obj_fname asm_fname in
   Sys.command as_cmd |> fun exit_code ->
     if exit_code = 0 then () else failwith @@
     sprintf "as failed when executing: %s" as_cmd;
