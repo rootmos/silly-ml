@@ -5,6 +5,8 @@ module A = Anf
 type register = RAX | RBX | RCX | RDX | R8 | R9 | R10 | RDI | RSI | RSP
 [@@deriving sexp]
 
+let call_registers = [RDI; RSI; RDX; RCX; R8; R9]
+
 type label = string
 [@@deriving sexp]
 
@@ -46,51 +48,119 @@ let push_pop ~precious l =
 
 let words n = 8 * n
 
-module Local = struct
-  type t = int String.Map.t
-
-  let scope_open init =
-    let t = List.mapi init ~f:(fun i (n, v) -> (n, words i))
-      |> String.Map.of_alist_exn in
-    let size = words @@ String.Map.length t in
-    let ls = [Sub (Constant size, Register RSP)] in
-    let ls = ls @ List.mapi init ~f:(fun i (n, v) ->
-      Mov (v, Dereference (words i, RSP))) in
-    t, ls
-
-  let scope_close t =
-    let size = words @@ String.Map.length t in
-    [Add (Constant size, Register RSP)]
-
-  let lookup t n =
-    let offset = String.Map.find_exn t n in
-    Dereference (offset, RSP)
+module type Listing_intf = sig
+  type 'a t
+  val tell : op list -> unit t
 end
 
-let call_registers = [RDI; RSI; RDX; RCX; R8; R9]
+module Asm_syntax(L: Listing_intf) = struct
+  let rax = RAX
+  let rbx = RBX
+  let rcx = RCX
+  let rdx = RDX
+  let r8  = R8
+  let r9  = R9
+  let r10 = R10
+  let rdi = RDI
+  let rsi = RSI
+  let rsp = RSP
 
-let call ?(target=Register RAX) ?(precious=[]) l args =
-  let open List in
-  let rs = take call_registers (length args) in
-  let args = zip_exn args rs >>| fun (o, r) -> Mov (o, Register r) in
-  match target with
-  | Dereference (_, RAX) -> raise @@ Backend_exception (Register_error RAX)
-  | Register RAX -> push_pop ~precious @@ args @ [Call l]
-  | o -> push_pop ~precious @@ args @ [Call l; Mov (Register RAX, target)]
+  let mov o1 o2 = L.tell @@ if o1 == o2 then [] else [ Mov (o1, o2) ]
+  let sub o1 o2 = L.tell @@ [ Sub (o1, o2) ]
+  let add o1 o2 = L.tell @@ [ Add (o1, o2) ]
 
-let malloc ?(target=Register RAX) ?(precious=[]) size =
-  call ~target ~precious "malloc" [Constant size]
+  let const i = Constant i
+  let reg r = Register r
+  let deref b r = Dereference (b, r)
+  let derefw w r = deref (words w) r
+  let label l = Label l
 
+  let call l args =
+    let open List in
+    let rs = take call_registers (length args) in
+    let args = zip_exn args rs  >>| fun (o, r) -> Mov (o, Register r) in
+    L.tell @@ args @ [Call l]
+
+  let malloc size = call "malloc" [Constant size]
+  let mallocw w = malloc (words w)
+end
+
+module Listing = struct
+  type 'a t = 'a * op list
+
+  include Monad.Make(struct
+    type 'a t = 'a * op list
+    let return x = x, []
+    let map (x, ls) ~f = f x, ls
+    let map = `Custom map
+    let bind (x, ls) ~f = let (y, ls') = f x in y, ls @ ls'
+  end)
+
+  let insert ops = (), ops
+
+  include Asm_syntax(struct
+    type 'a t = 'a * op list
+    let tell = insert
+  end)
+
+  let (>>) x y = x >>= fun () -> y
+  let run_ (_, ls) = ls
+end
+
+module Local = struct
+  type scope = {
+    ls: op list;
+    size: int;
+  }
+
+  let empty = { ls = []; size = 0 }
+
+  include Monad.Make(struct
+    type 'a t = scope -> 'a * scope
+    let return x = fun s -> (x, s)
+    let map = `Define_using_bind
+    let bind (ma: 'a t) ~(f: 'a -> 'b t) =
+      fun s -> let a, s' = ma s in (f a) s'
+  end)
+
+  let get: scope -> scope * scope = fun s -> s, s
+  let put s = fun _ -> (), s
+  let modify f = fun s -> (), f s
+
+  let insert ops = modify @@ fun s -> { s with ls = s.ls @ ops }
+
+  include Asm_syntax(struct
+    type 'a t = scope -> 'a * scope
+    let tell = insert
+  end)
+
+  let (>>) x y = x >>= fun () -> y
+
+  let declare =
+    get >>= fun s ->
+    put {s with size = s.size + words 1 } >>
+    return @@ deref s.size rsp
+
+  let define v =
+    declare >>= fun o ->
+    mov v o >>
+    return o
+
+  let run_ ?(init=empty) t =
+    let _, s = t init in
+    Listing.(
+      sub (const s.size) (reg rsp) >>
+      insert s.ls >>
+      add (const s.size) (reg rsp) |> run_)
+
+  let ret t = run_ t @ [ Ret ]
+end
 
 type closure = {
   capture: labelled_listing;
   eval: labelled_listing;
   offsets: (int * int) list
 } [@@deriving sexp]
-
-type node = {
-  eval: labelled_listing
-}
 
 module Ctx = struct
   type t = {
@@ -108,31 +178,32 @@ let fresh_identifier () =
   let id = !counter in
   incr counter; id
 
-let fresh_continuation_label =
-  sprintf "__k_%d" (fresh_identifier ())
-
-let rec go_value ?(precious=[]) ?(target=RAX) = function
+let rec go_value ?(current_closure=Register RBX) ?(target=Register RAX) v =
+  let open Local in
+  match v with
   | A.V_int i ->
-      let j = (i lsl 1) lor 0b1 in
-      [Mov (Constant j, Register target)]
+      mov (const ((i lsl 1) lor 0b1)) target
   | A.V_tuple (a, b) ->
-      let m = malloc @@ words 3
-      and al = go_value ~target:RBX a
-      and bl = go_value ~target:RCX b in
-      let l = m @ al @ bl @ [
-        Mov (Constant 0, Dereference (0, RAX));
-        Mov (Register RBX, Dereference (words 1, RAX));
-        Mov (Register RCX, Dereference (words 2, RAX));
-      ] in
-      begin match target with
-      | RAX ->
-          (Push (Register RAX)) :: l @ [
-            Mov (Register RAX, Register target); Pop RAX]
-      | _ -> l
-      end
-  | A.V_unit -> go_value @@ A.V_int 0
+      declare >>= fun m ->
+      mallocw 3 >>
+      mov (reg rax) m >>
+
+      declare >>= fun ma ->
+      go_value ~target:ma a >>
+
+      declare >>= fun mb ->
+      go_value ~target:mb b >>
+
+      mov m (reg rax) >>
+      mov (const 0) (derefw 0 rax) >>
+      mov ma (derefw 1 rax) >>
+      mov mb (derefw 2 rax) >>
+
+      mov (reg rax) target
+  | A.V_unit -> go_value ~target @@ A.V_int 0
   | A.V_ident id ->
-      call ~precious "lookup_identifier" [Register RBX; Constant id]
+      call "lookup_identifier" [current_closure; const id] >>
+      mov (reg rax) target
   | _ -> failwith "not implemented: go_value"
 
 let rec mk_closure ~ctx { A.uc_p; A.uc_free; A.uc_body } =
@@ -140,7 +211,7 @@ let rec mk_closure ~ctx { A.uc_p; A.uc_free; A.uc_body } =
   let offsets = uc_free @ pattern_captures |> List.dedup
     |> List.mapi ~f:(fun o id -> (id, o)) in
   let i = fresh_identifier () in
-  let label = sprintf "__f_%d" i in
+  let l = sprintf "__f_%d" i in
   let key_offset o = words ((2*o) + 1) in
   let value_offset o = words ((2*o) + 2) in
   let body, ctx = go ~ctx uc_body in
@@ -148,31 +219,25 @@ let rec mk_closure ~ctx { A.uc_p; A.uc_free; A.uc_body } =
     capture = {
       label = sprintf "__f_%d_capture" i;
       code =
-        let local, ls = Local.scope_open [
-          ("parent_offset", Register RDI);
-          ("new_capture", Constant 0);
-        ] in
-        let parent_offsets = Local.lookup local "parent_offset" in
-        let new_capture = Local.lookup local "new_capture" in
-        let size = words @@ (2 * List.length offsets) + 1 in
-        let ls = ls @ malloc ~target:new_capture size in
-        let ls = ls @ [ Mov (Label label, Dereference (0, RAX)) ] in
-        let os = List.map offsets ~f:(fun (id, o) ->
-          [ Mov (new_capture, Register RBX);
-            Mov (Constant id, Dereference (key_offset o, RBX)) ] @
+        Local.(
+          declare >>= fun new_capture ->
+          define (Register RDI) >>= fun parent_offsets ->
+          mallocw ((2 * List.length offsets) + 1) >>
+          mov (reg rax) new_capture >>
+          mov (label l) (derefw 0 rax) >>
+          let os = List.map offsets ~f:(fun (id, o) ->
+            mov new_capture (reg rbx) >>
+            mov (const id) (deref (key_offset o) rbx) >>
             if List.mem pattern_captures id ~equal:(=)
-            then [ Mov (Constant 0, Dereference (value_offset o, RBX)) ]
+            then mov (const 0) (deref (value_offset o) rbx)
             else
-              call "lookup_identifier" [parent_offsets; Constant id]
-                @ [ Mov (new_capture, Register RBX);
-                    Mov (Register RAX, (Dereference (value_offset o, RBX)))]  ) in
-        let ls = ls @ List.concat os in
-        let ls = ls @ [ Mov (new_capture, Register RAX) ] in
-        let ls = ls @ Local.scope_close local in
-        ls @ [ Ret ]
+              call "lookup_identifier" [parent_offsets; const id] >>
+              mov new_capture (reg rbx) >>
+              mov (reg rax) (deref (value_offset o) rbx)) in
+          all_ignore os >> mov new_capture (reg rax)) |> Local.ret
     };
     eval = {
-      label;
+      label = l;
       code =
         [
           match uc_p with
@@ -186,23 +251,30 @@ let rec mk_closure ~ctx { A.uc_p; A.uc_free; A.uc_body } =
   }, ctx
 and go ?(ctx=Ctx.empty) ?(precious=[]) ?(k="__done") l =
   match l with
-  | A.E_value v -> go_value v, ctx
+  | A.E_value v -> Local.run_ (go_value v), ctx
   | A.E_this_and_then { A.this; A.and_then } ->
       let _, ctx = go ~ctx and_then.uc_body in
       let c, ctx = mk_closure ctx and_then in
       let ctx = Ctx.add ctx c in
       let l, ctx = go ~ctx this in
-      call ~precious:[RDI] c.capture.label [Register RDI]
-        @ l
-        @ [Jmp (Label c.eval.label)], ctx
+      let ls = Local.(
+        define (reg rdi) >>= fun current_closure ->
+        call c.capture.label [reg rdi] >>
+        insert l >>
+        mov current_closure (reg rdi)
+      ) |> Local.run_ in
+      ls @ [Jmp (Label c.eval.label)], ctx
   | A.E_uncaptured_closure uc ->
       let c, ctx = mk_closure ctx uc in
       let ctx = Ctx.add ctx c in
-      call ~precious c.capture.label [Constant 0], ctx
+      Listing.(call c.capture.label [const 0] |> run_), ctx
   | A.E_apply (a, b) ->
-      go_value ~target:RBX a @ go_value ~precious:[RBX] ~target:RAX b @ [
-        Jmp (Dereference (0, RBX))
-      ], ctx
+      let ls = Local.(
+        declare >>= fun ma ->
+        go_value ~target:ma a >>
+        go_value ~target:(reg rax) b
+      ) |> Local.run_ in
+      ls @ [Jmp (Dereference (0, RBX))], ctx
   | _ -> failwith "not implemented: go"
 
 module Output = struct
