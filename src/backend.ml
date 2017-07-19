@@ -19,12 +19,15 @@ type operand =
 
 type op =
   Mov of operand * operand
+| Add of operand * operand
+| Sub of operand * operand
+| Cmp of operand * operand
 | Call of string
 | Push of operand
 | Pop of register
 | Jmp of operand
-| Add of operand * operand
-| Sub of operand * operand
+| Jne of operand
+| Set_label of label
 | Ret
 [@@deriving sexp]
 
@@ -65,9 +68,14 @@ module Asm_syntax(L: Listing_intf) = struct
   let rsi = RSI
   let rsp = RSP
 
-  let mov o1 o2 = L.tell @@ if o1 == o2 then [] else [ Mov (o1, o2) ]
-  let sub o1 o2 = L.tell @@ [ Sub (o1, o2) ]
-  let add o1 o2 = L.tell @@ [ Add (o1, o2) ]
+  let mov o1 o2 = L.tell @@ if o1 = o2 then [] else [ Mov (o1, o2) ]
+  let sub o1 o2 = L.tell [ Sub (o1, o2) ]
+  let add o1 o2 = L.tell [ Add (o1, o2) ]
+  let cmp o1 o2 = L.tell [ Cmp (o1, o2) ]
+  let set_label l = L.tell [ Set_label l ]
+  let jne o = L.tell [ Jne o ]
+  let jmp o = L.tell [ Jmp o ]
+  let ret = L.tell [ Ret ]
 
   let const i = Constant i
   let reg r = Register r
@@ -253,7 +261,7 @@ and go ?(ctx=Ctx.empty) ?(precious=[]) ?(k="__done") l =
   match l with
   | A.E_value v -> Local.run_ (go_value v), ctx
   | A.E_this_and_then { A.this; A.and_then } ->
-      let _, ctx = go ~ctx and_then.uc_body in
+      let _, ctx = go ~ctx and_then.A.uc_body in
       let c, ctx = mk_closure ctx and_then in
       let ctx = Ctx.add ctx c in
       let l, ctx = go ~ctx this in
@@ -267,7 +275,7 @@ and go ?(ctx=Ctx.empty) ?(precious=[]) ?(k="__done") l =
   | A.E_uncaptured_closure uc ->
       let c, ctx = mk_closure ctx uc in
       let ctx = Ctx.add ctx c in
-      Listing.(call c.capture.label [const 0] |> run_), ctx
+      Listing.(call c.capture.label [reg rdi] |> run_), ctx
   | A.E_apply (a, b) ->
       let ls = Local.(
         declare >>= fun ma ->
@@ -277,9 +285,21 @@ and go ?(ctx=Ctx.empty) ?(precious=[]) ?(k="__done") l =
       ls @ [Jmp (Dereference (0, RBX))], ctx
   | _ -> failwith "not implemented: go"
 
-module Output = struct
-  let indent s = "  " ^ s
 
+let lookup_identifier = {
+  label = "lookup_identifier";
+  code = Listing.(
+    let id = reg rdi in
+    mov (reg rdi) (reg rbx) >>
+    add (const (words 1)) (reg rbx) >>
+    set_label "lookup_identifier_loop" >>
+    cmp (deref 0 rbx) id >>
+    jne (label "lookup_identifier_loop") >>
+    mov (derefw 1 rbx) (reg rax) >>
+    ret |> run_)
+}
+
+module Output = struct
   let register = function
     | RAX -> "%rax"
     | RBX -> "%rbx"
@@ -302,15 +322,23 @@ module Output = struct
     | Mov (o1, o2) -> sprintf "movq %s %s" (operand o1) (operand o2)
     | Add (o1, o2) -> sprintf "addq %s %s" (operand o1) (operand o2)
     | Sub (o1, o2) -> sprintf "subq %s %s" (operand o1) (operand o2)
+    | Cmp (o1, o2) -> sprintf "cmpq %s %s" (operand o1) (operand o2)
     | Call s -> sprintf "call %s" s
     | Push o -> sprintf "pushq %s" (operand o)
     | Pop r -> sprintf "popq %s" (register r)
     | Jmp o -> sprintf "jmp %s" (operand o)
+    | Jne l -> sprintf "jne %s" (operand l)
     | Ret -> sprintf "ret"
+    | Set_label l -> sprintf "%s:" l
 
-  let listing = List.map ~f:(Fn.compose indent op)
+  let indent = function
+    | Set_label _ -> ""
+    | _ -> "  "
 
-  let labelled_listing { label; code } = [""; label ^ ":"] @ listing code
+  let listing = List.map ~f:(fun o -> indent o ^ op o)
+
+  let labelled_listing { label; code } =
+    [""; label ^ ":"] @ listing code
 
   let closure { capture; eval } =
     labelled_listing capture @ labelled_listing eval
@@ -323,6 +351,10 @@ end
 
 let anf_to_asm l =
   let code, ctx = go l in
-  let main = Output.labelled_listing { label = "main"; code }
-    |> String.concat ~sep:"\n" in
-  Output.of_ctx ctx ^ "\n" ^ main
+  String.concat ~sep:"\n" [
+    Output.of_ctx ctx;
+    Output.labelled_listing lookup_identifier
+      |> String.concat ~sep:"\n";
+    Output.labelled_listing { label = "main"; code }
+      |> String.concat ~sep:"\n"
+  ]
