@@ -232,7 +232,8 @@ let rec mk_closure ~ctx { A.uc_p; A.uc_free; A.uc_body } =
           define (Register RDI) >>= fun parent_offsets ->
           mallocw ((2 * List.length offsets) + 1) >>
           mov (reg rax) new_capture >>
-          mov (label l) (derefw 0 rax) >>
+          mov (label l) (reg rcx) >>
+          mov (reg rcx) (derefw 0 rax) >>
           let os = List.map offsets ~f:(fun (id, o) ->
             mov new_capture (reg rbx) >>
             mov (const id) (deref (key_offset o) rbx) >>
@@ -316,17 +317,20 @@ module Output = struct
     | Register r -> register r
     | Constant i -> sprintf "$%d" i
     | Label l -> l
+    | Dereference (0, r) -> sprintf "(%s)" (register r)
     | Dereference (i, r) -> sprintf "%d(%s)" i (register r)
 
   let op = function
-    | Mov (o1, o2) -> sprintf "movq %s %s" (operand o1) (operand o2)
-    | Add (o1, o2) -> sprintf "addq %s %s" (operand o1) (operand o2)
-    | Sub (o1, o2) -> sprintf "subq %s %s" (operand o1) (operand o2)
-    | Cmp (o1, o2) -> sprintf "cmpq %s %s" (operand o1) (operand o2)
+    | Mov (o1, o2) -> sprintf "movq %s, %s" (operand o1) (operand o2)
+    | Add (o1, o2) -> sprintf "addq %s, %s" (operand o1) (operand o2)
+    | Sub (o1, o2) -> sprintf "subq %s, %s" (operand o1) (operand o2)
+    | Cmp (o1, o2) -> sprintf "cmpq %s, %s" (operand o1) (operand o2)
     | Call s -> sprintf "call %s" s
     | Push o -> sprintf "pushq %s" (operand o)
     | Pop r -> sprintf "popq %s" (register r)
+    | Jmp ((Dereference _) as o)  -> sprintf "jmp *%s" (operand o)
     | Jmp o -> sprintf "jmp %s" (operand o)
+    | Jne ((Dereference _) as o)  -> sprintf "jne *%s" (operand o)
     | Jne l -> sprintf "jne %s" (operand l)
     | Ret -> sprintf "ret"
     | Set_label l -> sprintf "%s:" l
