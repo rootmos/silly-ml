@@ -1,6 +1,6 @@
 open Core_kernel.Std
 
-let run s =
+let go s =
   print_endline s;
 
   let parsed = Parsed_helpers.parse s in
@@ -31,6 +31,8 @@ let run s =
   Backend.anf_to_asm anf |> print_string;
 
   Pervasives.print_newline ()
+
+let run = Errors.run_with_pretty_errors ~f:go
 
 let () = Config.set_verbose true
 
