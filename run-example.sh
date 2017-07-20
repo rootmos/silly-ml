@@ -16,7 +16,7 @@ COMPILER=${COMPILER-./compiler.native}
 
 $COMPILER -L=runtime -o $BINARY $TEST_CASE
 
-ACTUAL_OUTPUT=$(mktemp $TEST_CASE.XXXX)
+ACTUAL_OUTPUT=$(mktemp $TEST_CASE.XXXXXX)
 trap "rm -f $ACTUAL_OUTPUT" EXIT
 
 set +e

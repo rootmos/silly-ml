@@ -14,8 +14,6 @@ env:
 
 script:
   - docker build -t $IMAGE .
-  - docker build -t runtime runtime
-  - docker run runtime test
 
 after_success:
   - docker login -u="$DOCKER_USERNAME" -p="$DOCKER_PASSWORD";
