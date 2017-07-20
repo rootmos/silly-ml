@@ -360,6 +360,30 @@ and go ~current_closure ~current_continuation ?(ctx=Ctx.empty) l =
         go_value ~current_closure ~target:(reg rdi) a >>
         shr 1 (reg rdi) >>
         call "exit" [reg rdi]) |> Local.run_, ctx
+  | A.E_primitive ("%print_int%", [a]) ->
+      let (arg, cc), l = Local.(
+        define (reg rsi) >>= fun current_closure ->
+        define current_continuation >>= fun cc ->
+        comment "fetch operand" >>
+        go_value ~current_closure ~target:(reg rdi) a >>
+        shr 1 (reg rdi) >>
+        comment "convert to string" >>
+        call "itos" [reg rdi] >>
+        comment "write to stdout" >>
+        call "write" [const 1; reg rax; reg rbx] >>
+        (* TODO: add asserts *)
+        mov cc (reg rdx) >>
+        return (const 0, reg rdx)) |> Local.run in
+      (l @ call_continuation cc arg), ctx
+  | A.E_primitive ("%print_newline%", [_]) ->
+      let (arg, cc), l = Local.(
+        define (reg rsi) >>= fun current_closure ->
+        define current_continuation >>= fun cc ->
+        call "write_newline" [const 1] >>
+        (* TODO: add asserts *)
+        mov cc (reg rdx) >>
+        return (const 0, reg rdx)) |> Local.run in
+      (l @ call_continuation cc arg), ctx
   | A.E_primitive (pf, _) ->
       raise @@ Backend_exception (Unsupported_primitive_function pf)
   | _ -> failwith "not implemented: go"

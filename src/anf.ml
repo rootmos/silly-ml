@@ -109,6 +109,8 @@ let transform_to_anf lambda =
   and expression = function
   | L.E_value (L.V_predef "(+)") -> bin_op "%plus%"
   | L.E_value (L.V_predef "exit") -> unary_op "%exit%"
+  | L.E_value (L.V_predef "print_int") -> unary_op "%print_int%"
+  | L.E_value (L.V_predef "print_newline") -> unary_op "%print_newline%"
   | L.E_value (L.V_predef pf) ->
       raise @@ Anf_exception (Unsupported_primitive_function pf)
   | L.E_value v -> E_value (value v)
