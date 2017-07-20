@@ -1,0 +1,7 @@
+let kestrel a b = a;;
+print_int (kestrel 1 2);;
+print_newline ();;
+
+let kite a b = b;;
+print_int (kite 3 4);;
+print_newline ();;
