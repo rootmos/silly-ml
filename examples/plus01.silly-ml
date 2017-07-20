@@ -1,1 +1,2 @@
-exit (7 + 11);;
+print_int (7 + 11);;
+print_newline ();;

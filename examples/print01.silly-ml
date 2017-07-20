@@ -1,3 +1,2 @@
 print_int 7;;
 print_newline ();;
-exit 0;;
