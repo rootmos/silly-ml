@@ -48,7 +48,7 @@ let () =
       let asm_fname = Filename.chop_extension source ^ ".asm" in
       In_channel.with_file source ~f:(fun i ->
         Out_channel.with_file asm_fname ~f:(fun o ->
-          Errors.run_with_pretty_errors ~err:(fun _ -> exit 1) ~f:(fun _ ->
+          Errors.run_with_pretty_errors ~err:(fun _ -> exit 1) (fun () ->
             silly_to_asm i o)));
 
       if not !only_compile then

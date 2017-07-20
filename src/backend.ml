@@ -23,6 +23,7 @@ type op =
 | Add of operand * operand
 | Sub of operand * operand
 | Cmp of operand * operand
+| Shr of int * operand
 | Call of label
 | Push of operand
 | Pop of register
@@ -30,6 +31,7 @@ type op =
 | Je of operand
 | Jne of operand
 | Set_label of label
+| Comment of string
 | Ret
 [@@deriving sexp]
 
@@ -76,11 +78,13 @@ module Asm_syntax(L: Listing_intf) = struct
   let sub o1 o2 = L.tell [ Sub (o1, o2) ]
   let add o1 o2 = L.tell [ Add (o1, o2) ]
   let cmp o1 o2 = L.tell [ Cmp (o1, o2) ]
+  let shr n o = L.tell [ Shr (n ,o) ]
   let set_label l = L.tell [ Set_label l ]
   let jne o = L.tell [ Jne o ]
   let je o = L.tell [ Je o ]
   let jmp o = L.tell [ Jmp o ]
   let ret = L.tell [ Ret ]
+  let comment s = L.tell [ Comment s ]
 
   let const i = Constant i
   let reg r = Register r
@@ -180,8 +184,7 @@ end
 
 type closure = {
   capture: labelled_listing;
-  eval: labelled_listing;
-  offsets: (int * int) list
+  eval: labelled_listing
 } [@@deriving sexp]
 
 module Ctx = struct
@@ -226,83 +229,113 @@ let rec go_value ~current_closure ?(target=Register RAX) v =
   | A.V_ident id ->
       call "lookup_identifier" [current_closure; const id] >>
       mov (reg rax) target
+  | A.V_predef "exit" ->
+      mallocw 1 >>
+      lea "exit_closure" (reg rbx) >>
+      mov (reg rbx) (derefw 0 rax)
   | _ -> failwith "not implemented: go_value"
 
-let rec mk_closure ~current_closure ~ctx { A.uc_p; A.uc_free; A.uc_body } =
+let rec mk_closure ~current_closure ~ctx
+  ({ A.uc_p; A.uc_free; A.uc_body } as uc) =
   let pattern_captures = A.pattern_captures uc_p in
   let offsets = uc_free @ pattern_captures |> List.dedup
     |> List.mapi ~f:(fun o id -> (id, o)) in
-  let i = fresh_identifier () in
-  let l = sprintf "__f_%d" i in
-  let key_offset o = words ((2*o) + 1) in
-  let value_offset o = words ((2*o) + 2) in
-  let body, ctx = go ~current_closure:(Register RSI) ~ctx uc_body in
-  {
-    capture = {
-      global = false;
-      label = sprintf "__f_%d_capture" i;
-      code =
-        Local.(
-          declare >>= fun new_capture ->
-          define (Register RDI) >>= fun parent_offsets ->
-          mallocw ((2 * List.length offsets) + 1) >>
-          mov (reg rax) new_capture >>
-          lea l (reg rcx) >>
-          mov (reg rcx) (derefw 0 rax) >>
-          let os = List.map offsets ~f:(fun (id, o) ->
+  let l = sprintf "__f_%d" (fresh_identifier ()) in
+  let key_offset o = words ((2*o) + 2) in
+  let value_offset o = words ((2*o) + 3) in
+  let body, ctx = go
+    ~current_closure:(Register RSI)
+    ~current_continuation:(Register RDX) ~ctx uc_body in
+  let c = {
+    capture = { global = false; label = l ^ "_capture";
+      code = Local.(
+        comment (sprintf "Capturing:\n%s"
+          (Anf.sexp_of_uncaptured_closure uc |> Sexp.to_string_hum)) >>
+        declare >>= fun new_capture ->
+        define (Register RDI) >>= fun parent_offsets ->
+        mallocw ((2 * List.length offsets) + 2) >>
+        mov (reg rax) new_capture >>
+        comment "store address of generated evaluation code" >>
+        lea l (reg rcx) >>
+        mov (reg rcx) (derefw 0 rax) >>
+        mov (Register RDX) (derefw 1 rax) >>
+        let os = List.map offsets ~f:(fun (id, o) ->
+          mov new_capture (reg rbx) >>
+          mov (const id) (deref (key_offset o) rbx) >>
+          if List.mem pattern_captures id ~equal:(=)
+          then mov (const 0) (deref (value_offset o) rbx)
+          else
+            call "lookup_identifier" [parent_offsets; const id] >>
             mov new_capture (reg rbx) >>
-            mov (const id) (deref (key_offset o) rbx) >>
-            if List.mem pattern_captures id ~equal:(=)
-            then mov (const 0) (deref (value_offset o) rbx)
-            else
-              call "lookup_identifier" [parent_offsets; const id] >>
-              mov new_capture (reg rbx) >>
-              mov (reg rax) (deref (value_offset o) rbx)) in
-          all_ignore os >> mov new_capture (reg rax)) |> Local.ret
+            mov (reg rax) (deref (value_offset o) rbx)) in
+        all_ignore os >> mov new_capture (reg rax)) |> Local.ret
     };
     eval = {
-      global = false;
-      label = l;
-      code =
-        [
-          match uc_p with
+      global = false; label = l; code =
+        [ Comment (sprintf "Evaluating:\n%s\n\n"
+          (Anf.sexp_of_expression uc_body |> Sexp.to_string_hum))
+        ] @
+        begin match uc_p with
           | A.P_ident id ->
               let o = List.Assoc.find_exn offsets id ~equal:(=) in
-              Mov (Register RDI, (Dereference (value_offset o, RSI)))
+              [ Mov (Register RDI, (Dereference (value_offset o, RSI))) ]
+          | A.P_wildcard -> []
           | _ -> failwith "pattern not implemented"
-        ] @ body
-    };
-    offsets
-  }, ctx
-and go ~current_closure ?(ctx=Ctx.empty) l =
+        end @ body
+    }
+  } in
+  c, Ctx.add ctx c
+and go ~current_closure ~current_continuation ?(ctx=Ctx.empty) l =
+  let call_continuation k arg =
+    Listing.(
+      comment "calling continuation" >>
+      mov arg (reg rdi) >>
+      mov k (reg rsi) >>
+      mov (derefw 1 rsi) (reg rdx) >>
+      jmp (derefw 0 rsi) |> run_) in
   match l with
-  | A.E_value v -> Local.run_ (go_value ~current_closure v), ctx
+  | A.E_value v ->
+      let (arg, cc), l = Local.(
+        define (current_continuation) >>= fun cc ->
+        go_value ~current_closure v >>
+        mov cc (reg rdx) >> return ((reg rax), (reg rdx))
+        ) |> Local.run in
+      (l @ call_continuation cc arg), ctx
   | A.E_this_and_then { A.this; A.and_then } ->
-      let (c, ctx), ls = Local.(
-        define (reg rsi) >>= fun current_closure ->
-        let _, ctx = go ~current_closure ~ctx and_then.A.uc_body in
-        let c, ctx = mk_closure ~current_closure ~ctx and_then in
-        let ctx = Ctx.add ctx c in
-        declare >>= fun next_closure ->
-        call c.capture.label [current_closure] >>
-        mov (reg rax) next_closure >>
-        let l, ctx = go ~current_closure ~ctx this in
-        insert l >>
-        mov (reg rax) (reg rdi) >>
-        mov next_closure (reg rsi) >> return (c, ctx)
-      ) |> Local.run in
-      ls @ [Jmp (Label c.eval.label)], ctx
+      let c, ctx = mk_closure ~current_closure ~ctx and_then in
+      let (current_closure, next_continuation), ls = Local.(
+        define current_closure >>= fun current_closure ->
+        comment "capturing \"then\", ie next continuation" >>
+        call c.capture.label [current_closure; current_continuation] >>
+        mov (reg rax) (reg rdx) >>
+        mov current_closure (reg rsi) >>
+        return (reg rsi, reg rdx)) |> Local.run in
+      let ctx, ls' = Listing.(
+        comment "evaluate \"this\"" >>
+        let l, ctx = go ~current_closure
+          ~current_continuation:next_continuation ~ctx this in
+        insert l >> return ctx |> run) in
+      ls @ ls', ctx
   | A.E_uncaptured_closure uc ->
       let c, ctx = mk_closure ~current_closure ~ctx uc in
-      let ctx = Ctx.add ctx c in
-      Listing.(call c.capture.label [current_closure] |> run_), ctx
+      let l = Listing.(
+        call c.capture.label [current_closure; Constant 0] |> run_) in
+      let l' = call_continuation current_continuation (Register RAX) in
+      l @ l', ctx
   | A.E_apply (a, b) ->
       let jo, ls = Local.(
         define (reg rsi) >>= fun current_closure ->
+        comment "remember current continuation" >>
+        define current_continuation >>= fun cc ->
         declare >>= fun ma ->
+        comment "evaluate function" >>
         go_value ~current_closure ~target:ma a >>
+        comment "evaluate argument" >>
         go_value ~current_closure ~target:(reg rdi) b >>
-        mov ma (reg rsi) >> return @@ deref 0 rsi
+        comment "call function using current continuation" >>
+        mov ma (reg rsi) >>
+        mov cc (reg rdx) >>
+        return @@ deref 0 rsi
       ) |> Local.run in
       ls @ [Jmp jo], ctx
   | _ -> failwith "not implemented: go"
@@ -314,7 +347,7 @@ let lookup_identifier = {
   code = Listing.(
     let id = reg rsi in
     mov (reg rdi) (reg rbx) >>
-    add (const (words 1)) (reg rbx) >>
+    add (const (words 2)) (reg rbx) >>
     set_label "lookup_identifier_loop" >>
     cmp (deref 0 rbx) id >>
     je (label "lookup_identifier_done") >>
@@ -323,6 +356,15 @@ let lookup_identifier = {
     set_label "lookup_identifier_done" >>
     mov (derefw 1 rbx) (reg rax) >>
     ret |> run_)
+}
+
+let exit_closure = {
+  global = false;
+  label = "exit_closure";
+  code = Listing.(
+    shr 1 (reg rdi) >>
+    call "exit" [(reg rdi)] |> run_
+  )
 }
 
 module Output = struct
@@ -351,6 +393,7 @@ module Output = struct
     | Add (o1, o2) -> sprintf "addq %s, %s" (operand o1) (operand o2)
     | Sub (o1, o2) -> sprintf "subq %s, %s" (operand o1) (operand o2)
     | Cmp (o1, o2) -> sprintf "cmpq %s, %s" (operand o1) (operand o2)
+    | Shr (n, o) -> sprintf "shrq $%d, %s" n (operand o)
     | Call s -> sprintf "call %s" s
     | Push o -> sprintf "pushq %s" (operand o)
     | Pop r -> sprintf "popq %s" (register r)
@@ -362,9 +405,12 @@ module Output = struct
     | Je l -> sprintf "je %s" (operand l)
     | Ret -> sprintf "ret"
     | Set_label l -> sprintf "%s:" l
+    | Comment s -> String.split_lines s
+        |> List.map ~f:(fun s -> "# " ^ s) |> String.concat ~sep:"\n"
 
   let indent = function
     | Set_label _ -> ""
+    | Comment _ -> ""
     | _ -> "  "
 
   let listing = List.map ~f:(fun o -> indent o ^ op o)
@@ -387,10 +433,14 @@ module Output = struct
 end
 
 let anf_to_asm l =
-  let code, ctx = go ~current_closure:(Constant 0) l in
+  let code, ctx = go
+    ~current_closure:(Constant 0)
+    ~current_continuation:(Constant 0) l in
   String.concat ~sep:"\n" [
     Output.of_ctx ctx;
     Output.labelled_listing lookup_identifier
+      |> String.concat ~sep:"\n";
+    Output.labelled_listing exit_closure
       |> String.concat ~sep:"\n";
     Output.labelled_listing { global = true; label = "main"; code }
       |> String.concat ~sep:"\n";

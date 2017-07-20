@@ -32,11 +32,11 @@ let go s =
 
   Pervasives.print_newline ()
 
-let run = Errors.run_with_pretty_errors ~f:go
+let run s = Errors.run_with_pretty_errors (fun () -> go s)
 
 let () = Config.set_verbose true
 
-let () = run "let f a = a;; f ();;"
+let () = run "let f a = a;; f ();; exit 7;;"
 (*let () = run "let f a b = a + b;; f 1 2;;"*)
 (*let () = run "print_int 3;;"*)
 (*let () = run "(1, 2);;"*)

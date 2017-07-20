@@ -1,7 +1,7 @@
 open Core_kernel.Std
 open Printf
 
-let run_with_pretty_errors ?(err=raise) ~f =
+let run_with_pretty_errors ?(err=raise) f =
   try f () with 
   | Parsed_helpers.Parser_helpers_exception Parsed_helpers.Parsing as e ->
       eprintf "parsing error\n";
