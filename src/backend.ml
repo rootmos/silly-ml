@@ -22,6 +22,7 @@ type op =
 | Lea of label * operand
 | Add of operand * operand
 | Sub of operand * operand
+| Mul of operand * operand
 | Cmp of operand * operand
 | Shr of int * operand
 | Shl of int * operand
@@ -78,8 +79,9 @@ module Asm_syntax(L: Listing_intf) = struct
 
   let mov o1 o2 = L.tell @@ if o1 = o2 then [] else [ Mov (o1, o2) ]
   let lea l o = L.tell [ Lea (l, o) ]
-  let sub o1 o2 = L.tell [ Sub (o1, o2) ]
   let add o1 o2 = L.tell [ Add (o1, o2) ]
+  let sub o1 o2 = L.tell [ Sub (o1, o2) ]
+  let mul o1 o2 = L.tell [ Mul (o1, o2) ]
   let cmp o1 o2 = L.tell [ Cmp (o1, o2) ]
   let shr n o = L.tell [ Shr (n ,o) ]
   let shl n o = L.tell [ Shl (n ,o) ]
@@ -355,6 +357,39 @@ and go ~current_closure ~current_continuation ?(ctx=Ctx.empty) l =
         mov cc (reg rdx) >>
         return (reg rdi, reg rdx)) |> Local.run in
       (l @ call_continuation cc arg), ctx
+  | A.E_primitive ("%minus%", [a; b]) ->
+      let (arg, cc), l = Local.(
+        define (reg rsi) >>= fun current_closure ->
+        define current_continuation >>= fun cc ->
+        declare >>= fun ma ->
+        comment "fetch first operand" >>
+        go_value ~current_closure ~target:ma a >>
+        shr 1 ma >>
+        comment "fetch second operand" >>
+        go_value ~current_closure ~target:(reg rdi) b >>
+        shr 1 (reg rdi) >>
+        sub (reg rdi) ma >>
+        mov ma (reg rdi) >>
+        shl 1 (reg rdi) >>
+        mov cc (reg rdx) >>
+        return (reg rdi, reg rdx)) |> Local.run in
+      (l @ call_continuation cc arg), ctx
+  | A.E_primitive ("%times%", [a; b]) ->
+      let (arg, cc), l = Local.(
+        define (reg rsi) >>= fun current_closure ->
+        define current_continuation >>= fun cc ->
+        declare >>= fun ma ->
+        comment "fetch first operand" >>
+        go_value ~current_closure ~target:ma a >>
+        shr 1 ma >>
+        comment "fetch second operand" >>
+        go_value ~current_closure ~target:(reg rdi) b >>
+        shr 1 (reg rdi) >>
+        mul ma (reg rdi) >>
+        shl 1 (reg rdi) >>
+        mov cc (reg rdx) >>
+        return (reg rdi, reg rdx)) |> Local.run in
+      (l @ call_continuation cc arg), ctx
   | A.E_primitive ("%exit%", [a]) ->
       Local.(
         go_value ~current_closure ~target:(reg rdi) a >>
@@ -432,6 +467,7 @@ module Output = struct
     | Lea (l, o)   -> sprintf "leaq %s, %s" l (operand o)
     | Add (o1, o2) -> sprintf "addq %s, %s" (operand o1) (operand o2)
     | Sub (o1, o2) -> sprintf "subq %s, %s" (operand o1) (operand o2)
+    | Mul (o1, o2) -> sprintf "imulq %s, %s" (operand o1) (operand o2)
     | Cmp (o1, o2) -> sprintf "cmpq %s, %s" (operand o1) (operand o2)
     | Shr (n, o) -> sprintf "shrq $%d, %s" n (operand o)
     | Shl (n, o) -> sprintf "shlq $%d, %s" n (operand o)
