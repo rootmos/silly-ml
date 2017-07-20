@@ -18,3 +18,9 @@ let run_with_pretty_errors ?(err=raise) f =
   | Typed.Typed_exception error as e ->
       eprintf "typed error: %s\n" (Typed.format_error error);
       err e
+  | Anf.Anf_exception error as e ->
+      eprintf "anf error: %s\n" (Anf.format_error error);
+      err e
+  | Backend.Backend_exception error as e ->
+      eprintf "backend error: %s\n" (Backend.format_error error);
+      err e

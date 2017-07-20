@@ -10,9 +10,9 @@ type error =
 exception Interpret_exception of error
 
 let format_error = function
- | Unbound_identifier id -> sprintf "unbound identifier %d" id
- | Match_error -> "match error"
- | Unreachable -> "interpreter whoopsie"
+| Unbound_identifier id -> sprintf "unbound identifier %d" id
+| Match_error -> "match error"
+| Unreachable -> "interpreter whoopsie"
 
 module Ctx = struct
   type t = {

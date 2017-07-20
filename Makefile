@@ -31,7 +31,7 @@ clean:
 
 .PHONY: debug
 debug: compiler.native
-	./$< examples/simple01.silly-ml
+	./$< -L=runtime examples/plus01.silly-ml
 	gdb a.out
 
 .PHONY: examples

@@ -24,6 +24,7 @@ type op =
 | Sub of operand * operand
 | Cmp of operand * operand
 | Shr of int * operand
+| Shl of int * operand
 | Call of label
 | Push of operand
 | Pop of register
@@ -44,7 +45,9 @@ type labelled_listing = {
   code: listing
 } [@@deriving sexp]
 
-type error = Register_error of register
+type error =
+  Register_error of register
+| Unsupported_primitive_function of string
 exception Backend_exception of error
 
 
@@ -79,6 +82,7 @@ module Asm_syntax(L: Listing_intf) = struct
   let add o1 o2 = L.tell [ Add (o1, o2) ]
   let cmp o1 o2 = L.tell [ Cmp (o1, o2) ]
   let shr n o = L.tell [ Shr (n ,o) ]
+  let shl n o = L.tell [ Shl (n ,o) ]
   let set_label l = L.tell [ Set_label l ]
   let jne o = L.tell [ Jne o ]
   let je o = L.tell [ Je o ]
@@ -229,10 +233,6 @@ let rec go_value ~current_closure ?(target=Register RAX) v =
   | A.V_ident id ->
       call "lookup_identifier" [current_closure; const id] >>
       mov (reg rax) target
-  | A.V_predef "exit" ->
-      mallocw 1 >>
-      lea "exit_closure" (reg rbx) >>
-      mov (reg rbx) (derefw 0 rax)
   | _ -> failwith "not implemented: go_value"
 
 let rec mk_closure ~current_closure ~ctx
@@ -338,6 +338,30 @@ and go ~current_closure ~current_continuation ?(ctx=Ctx.empty) l =
         return @@ deref 0 rsi
       ) |> Local.run in
       ls @ [Jmp jo], ctx
+  | A.E_primitive ("%plus%", [a; b]) ->
+      let (arg, cc), l = Local.(
+        define (reg rsi) >>= fun current_closure ->
+        define current_continuation >>= fun cc ->
+        declare >>= fun ma ->
+        comment "fetch first operand" >>
+        go_value ~current_closure ~target:ma a >>
+        shr 1 ma >>
+        comment "fetch second operand" >>
+        go_value ~current_closure ~target:(reg rdi) b >>
+        shr 1 (reg rdi) >>
+        comment "I think therefore I sum..." >>
+        add ma (reg rdi) >>
+        shl 1 (reg rdi) >>
+        mov cc (reg rdx) >>
+        return (reg rdi, reg rdx)) |> Local.run in
+      (l @ call_continuation cc arg), ctx
+  | A.E_primitive ("%exit%", [a]) ->
+      Local.(
+        go_value ~current_closure ~target:(reg rdi) a >>
+        shr 1 (reg rdi) >>
+        call "exit" [reg rdi]) |> Local.run_, ctx
+  | A.E_primitive (pf, _) ->
+      raise @@ Backend_exception (Unsupported_primitive_function pf)
   | _ -> failwith "not implemented: go"
 
 
@@ -394,6 +418,7 @@ module Output = struct
     | Sub (o1, o2) -> sprintf "subq %s, %s" (operand o1) (operand o2)
     | Cmp (o1, o2) -> sprintf "cmpq %s, %s" (operand o1) (operand o2)
     | Shr (n, o) -> sprintf "shrq $%d, %s" n (operand o)
+    | Shl (n, o) -> sprintf "shlq $%d, %s" n (operand o)
     | Call s -> sprintf "call %s" s
     | Push o -> sprintf "pushq %s" (operand o)
     | Pop r -> sprintf "popq %s" (register r)
@@ -446,3 +471,8 @@ let anf_to_asm l =
       |> String.concat ~sep:"\n";
     ""
   ]
+
+let format_error = function
+| Register_error r -> sprintf "register error %s" (Output.register r)
+| Unsupported_primitive_function pf ->
+    sprintf "unsupported primitive function %s" pf

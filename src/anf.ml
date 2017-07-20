@@ -11,16 +11,19 @@ type pattern =
 | P_tag of int * pattern
 [@@deriving sexp]
 
+type identifier = int
+[@@deriving sexp]
+
 type value =
   V_int of int
 | V_unit
 | V_tuple of value * value
-| V_ident of int
+| V_ident of identifier
 | V_tag of int * value
-| V_predef of string
   [@@deriving sexp]
 and expression =
   E_value of value
+| E_primitive of string * value list
 | E_apply of value * value
 | E_switch of value * (pattern * expression) list
 | E_this_and_then of this_and_then
@@ -29,12 +32,12 @@ and expression =
 and captured_closure = {
   cc_p: pattern;
   cc_body: expression;
-  cc_captures: (int * value) list
+  cc_captures: (identifier * value) list
 } [@@deriving sexp]
 and uncaptured_closure = {
   uc_p: pattern;
   uc_body: expression;
-  uc_free: int list
+  uc_free: identifier list
 } [@@deriving sexp]
 and this_and_then = {
   this: expression;
@@ -44,7 +47,15 @@ and this_and_then = {
 type t = expression
 [@@deriving sexp]
 
-type error = Unreachable
+type error =
+  Unreachable
+| Unsupported_primitive_function of string
+
+let format_error = function
+| Unreachable -> "anf whoopsie"
+| Unsupported_primitive_function pf ->
+    sprintf "unsupported primitive function %s" pf
+
 exception Anf_exception of error
 
 let rec pattern_captures = function
@@ -64,17 +75,43 @@ let transform_to_anf lambda =
   | L.P_wildcard -> P_wildcard
   | L.P_tag (i, p) -> P_tag (i, pattern p) in
 
+  let bin_op p =
+    let a = L.fresh_identifier ()
+    and b = L.fresh_identifier () in
+    E_uncaptured_closure {
+      uc_p = P_ident a;
+      uc_free = [];
+      uc_body = E_uncaptured_closure {
+        uc_p = P_ident b;
+        uc_free = [a];
+        uc_body = E_primitive (p, [V_ident a; V_ident b])
+      }
+    } in
+
+  let unary_op p =
+    let a = L.fresh_identifier () in
+    E_uncaptured_closure {
+      uc_p = P_ident a;
+      uc_free = [];
+      uc_body = E_primitive (p, [V_ident a])
+    } in
+
   let rec value = function
     L.V_int i -> V_int i
   | L.V_unit -> V_unit
   | L.V_tuple (a, b) -> V_tuple (value a, value b)
   | L.V_ident id -> V_ident id
   | L.V_tag (t, v) -> V_tag (t, value v)
-  | L.V_predef f -> V_predef f
+  | L.V_predef f ->
+      raise @@ Anf_exception Unreachable
   | L.V_captured_closure { L.cc_p; L.cc_body; L.cc_captures } ->
       raise @@ Anf_exception Unreachable
   and expression = function
-    L.E_value v -> E_value (value v)
+  | L.E_value (L.V_predef "(+)") -> bin_op "%plus%"
+  | L.E_value (L.V_predef "exit") -> unary_op "%exit%"
+  | L.E_value (L.V_predef pf) ->
+      raise @@ Anf_exception (Unsupported_primitive_function pf)
+  | L.E_value v -> E_value (value v)
   | L.E_tuple (a, b) ->
       let a' = L.fresh_identifier ()
       and b' = L.fresh_identifier () in
