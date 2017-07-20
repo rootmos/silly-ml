@@ -7,7 +7,8 @@ SRC=$(shell ls src/*.ml src/*.mly src/*.mll)
 repl: repl.native
 	rlwrap ./$<
 
-test: parser_tests interpret_tests test-repl
+test: parser_tests interpret_tests test-repl examples
+	$(MAKE) -C runtime test
 
 test-repl: repl.native
 	./repl.expect
@@ -22,6 +23,7 @@ snippet: snippet.native $(SRC)
 .PHONY: clean
 clean:
 	$(OCB) -clean
+	$(MAKE) -C runtime clean
 
 .PRECIOUS: %.native
 %.native: $(SRC)
@@ -29,5 +31,14 @@ clean:
 
 .PHONY: debug
 debug: compiler.native
-	./$< -L=runtime examples/simple01.silly-ml
+	./$< examples/simple01.silly-ml
 	gdb a.out
+
+.PHONY: examples
+examples: $(foreach e, $(shell ls examples/*.silly-ml), $(e)-run)
+
+examples/%.silly-ml-run: examples/%.silly-ml compiler.native runtime/libruntime.a
+	./run-example.sh $<
+
+runtime/libruntime.a:
+	$(MAKE) -C runtime libruntime.a

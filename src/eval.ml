@@ -57,6 +57,6 @@ let rec repl ?(ctx=Ctx.empty) () =
       | v, Some t -> printf "%s: %s\n" (pretty v t) (Typed.format_typ t)
     end;
     repl ~ctx:ctx' () in
-  try Errors.run_with_pretty_errors ~err:(fun _ -> repl ~ctx ()) ~f:go () with
+  try Errors.run_with_pretty_errors ~err:(fun _ -> repl ~ctx ()) go with
   | Sys.Break -> Pervasives.print_newline (); repl ~ctx ()
   | End_of_file -> ()
