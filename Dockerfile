@@ -29,8 +29,8 @@ ADD runtime/Makefile runtime/
 RUN eval `opam config env` && make test
 
 FROM alpine:3.3
+RUN apk update && apk add binutils
 WORKDIR /root/
-RUN apk add binutils
 COPY --from=builder /silly-ml/repl.native .
 COPY --from=builder /silly-ml/compiler.native .
 COPY --from=builder /silly-ml/runtime/libruntime.a .
