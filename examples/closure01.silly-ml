@@ -1,0 +1,10 @@
+let f x y = x + y;;
+
+let g = f 1;;
+let h = f 2;;
+
+print_int (g 2);;
+print_newline ();;
+
+print_int (h 2);;
+print_newline ();;
