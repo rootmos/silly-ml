@@ -406,14 +406,6 @@ let lookup_identifier = {
     ret |> run_)
 }
 
-let exit_closure = {
-  global = false;
-  label = "exit_closure";
-  code = Listing.(
-    shr 1 (reg rdi) >>
-    call "exit" [(reg rdi)] |> run_
-  )
-}
 
 module Output = struct
   let register = function
@@ -484,17 +476,31 @@ end
 let anf_to_asm l =
   let code, ctx = go
     ~current_closure:(Constant 0)
-    ~current_continuation:(Constant 0) l in
-  String.concat ~sep:"\n" [
-    Output.of_ctx ctx;
-    Output.labelled_listing lookup_identifier
-      |> String.concat ~sep:"\n";
-    Output.labelled_listing exit_closure
-      |> String.concat ~sep:"\n";
-    Output.labelled_listing { global = true; label = "main"; code }
-      |> String.concat ~sep:"\n";
-    ""
-  ]
+    ~current_continuation:(Register RDX) l in
+  let exit_closure = {
+    global = false; label = "__exit";
+    code = Local.(call "exit" [const 0]) |> Local.run_
+  } in
+  let exit_capture = {
+    global = false; label = exit_closure.label ^ "_capture";
+    code = Local.(
+      mallocw 2 >>
+      lea exit_closure.label (reg rcx) >>
+      mov (reg rcx) (derefw 0 rax) >>
+      mov (const 0) (derefw 1 rax)
+    ) |> Local.ret
+  } in
+  let main = {
+    global = true; label = "main";
+    code = Local.(
+      call exit_capture.label [] >> mov (reg rax) (reg rdx) >>
+      insert code |> run_)
+  } in
+  let l = Output.of_ctx ctx
+  and l' = List.map ~f:(fun ll ->
+    Output.labelled_listing ll |> String.concat ~sep:"\n")
+  [ lookup_identifier; exit_closure; exit_capture; main; ] in
+  String.concat ~sep:"\n" @@ l :: l' @ [ "" ]
 
 let format_error = function
 | Register_error r -> sprintf "register error %s" (Output.register r)
