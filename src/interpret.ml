@@ -108,8 +108,8 @@ let rec reduce ?(l=0) ctx e =
       }, ctx
   | E_switch (V_ident id, cases) ->
       reduce ~l ctx @@ E_switch (Ctx.lookup ctx id, cases)
-  | E_switch (v, (p, body) :: cs) ->
-      begin try reduce ~l (pattern_match ctx p v) body with
+  | E_switch (v, { L.sc_p; L.sc_body } :: cs) ->
+      begin try reduce ~l (pattern_match ctx sc_p v) sc_body with
       | Interpret_exception Match_error ->
         reduce ~l ctx @@ E_switch (v, cs)
       end

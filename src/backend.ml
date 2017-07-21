@@ -47,23 +47,15 @@ type labelled_listing = {
 type error =
   Register_error of register
 | Unsupported_primitive_function of string
+| Unreachable
 exception Backend_exception of error
-
-
-let push_pop ~precious l =
-  let open List in
-  (precious >>| fun r -> Push (Register r))
-    @ l
-    @ (rev precious >>| fun r -> Pop r)
 
 let words n = 8 * n
 
-module type Listing_intf = sig
+module Asm_syntax(L: sig
   type 'a t
   val tell : op list -> unit t
-end
-
-module Asm_syntax(L: Listing_intf) = struct
+end) = struct
   let rax = RAX
   let rbx = RBX
   let rcx = RCX
@@ -330,7 +322,7 @@ let rec mk_pattern_match ~str ~abort
 
   | _ -> failwith "pattern not implemented"
 
-let rec mk_closure ~current_closure ~ctx uc =
+let rec mk_closure ~ctx ?(abort=Label Abort.match_error.label) uc =
   let str = Closure_struct.mk uc in
   let l = sprintf "__f_%d" (fresh_identifier ()) in
   let body, ctx = go
@@ -367,7 +359,7 @@ let rec mk_closure ~current_closure ~ctx uc =
             (Anf.sexp_of_expression uc.A.uc_body |> Sexp.to_string_hum))
         ] in
         let pattern = mk_pattern_match ~str
-          ~abort:(Label Abort.match_error.label) uc.A.uc_p in
+          ~abort uc.A.uc_p in
         List.concat [comment; pattern; body]
     }
   } in
@@ -389,7 +381,7 @@ and go ~current_closure ~current_continuation ?(ctx=Ctx.empty) l =
         ) |> Local.run in
       (l @ call_continuation cc arg), ctx
   | A.E_this_and_then { A.this; A.and_then } ->
-      let c, ctx = mk_closure ~current_closure ~ctx and_then in
+      let c, ctx = mk_closure ~ctx and_then in
       let (current_closure, next_continuation), ls = Local.(
         define current_closure >>= fun current_closure ->
         comment "capturing \"then\", ie next continuation" >>
@@ -404,7 +396,7 @@ and go ~current_closure ~current_continuation ?(ctx=Ctx.empty) l =
         insert l >> return ctx |> run) in
       ls @ ls', ctx
   | A.E_uncaptured_closure uc ->
-      let c, ctx = mk_closure ~current_closure ~ctx uc in
+      let c, ctx = mk_closure ~ctx uc in
       let l = Listing.(
         call c.capture.label [current_closure; Constant 0] |> run_) in
       let l' = call_continuation current_continuation (Register RAX) in
@@ -506,8 +498,36 @@ and go ~current_closure ~current_continuation ?(ctx=Ctx.empty) l =
       (l @ call_continuation cc arg), ctx
   | A.E_primitive (pf, _) ->
       raise @@ Backend_exception (Unsupported_primitive_function pf)
-  | _ -> failwith "not implemented: go"
-
+  | A.E_switch (v, cases) ->
+      let cases_with_labels =
+        List.(cases >>| fun c ->
+          c, sprintf "__switch_case_%d" (fresh_identifier ())) in
+      let ctx, listings = Local.(
+        define (reg rdi) >>= fun value ->
+        define (reg rsi) >>= fun current_closure ->
+        define current_continuation >>= fun current_continuation ->
+        declare >>= fun mv ->
+        go_value ~current_closure ~target:mv v >>
+        let listings, ctx =
+          let rec go_case ctx ls = function
+            | [] -> ls, ctx
+            | (case, l) :: tail ->
+                let next_case = match tail with
+                | (_, l) :: _ -> label l
+                | [] -> label Abort.match_error.label in
+                let closure, ctx = mk_closure ~ctx ~abort:next_case case in
+                let ls' = Listing.(
+                  set_label l >>
+                  call closure.capture.label [current_closure; const 0] >>
+                  mov mv (reg rdi) >>
+                  mov (reg rax) (reg rsi) >>
+                  mov current_continuation (reg rdx) >>
+                  jmp (deref 0 rsi)
+                ) |> Listing.run_ in
+                go_case ctx (ls @ ls') tail in
+          go_case ctx [] cases_with_labels in
+        insert listings >> return ctx) |> Local.run in
+      listings, ctx
 
 let lookup_identifier = {
   global = false;
@@ -651,3 +671,4 @@ let format_error = function
 | Register_error r -> sprintf "register error %s" (Output.register r)
 | Unsupported_primitive_function pf ->
     sprintf "unsupported primitive function %s" pf
+| Unreachable -> "backend whoopsie"

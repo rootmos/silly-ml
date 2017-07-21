@@ -25,7 +25,7 @@ and expression =
   E_value of value
 | E_primitive of string * value list
 | E_apply of value * value
-| E_switch of value * (pattern * expression) list
+| E_switch of value * uncaptured_closure list
 | E_this_and_then of this_and_then
 | E_uncaptured_closure of uncaptured_closure
   [@@deriving sexp]
@@ -187,7 +187,13 @@ let transform_to_anf lambda =
           uc_body = go id xs
         }
       }
-  | _ -> failwith "not implemented: expression" in
+  | L.E_switch (v, cases) ->
+      let f { L.sc_p; L.sc_body; L.sc_free } = {
+        uc_p = pattern sc_p;
+        uc_body = expression sc_body;
+        uc_free = sc_free
+      } in
+      E_switch (value v, cases >>| f) in
 
   expression lambda
 
