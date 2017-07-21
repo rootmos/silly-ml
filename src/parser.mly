@@ -74,26 +74,31 @@ typ:
   | i = IDENTIFIER { Parsed.T_ident i }
   ;
 
+
 expression:
-  | wo_match = expression_without_match { wo_match }
+  | a = expression_without_sequence; SEMICOLON; b = expression
+    { Parsed.E_let (Parsed.P_unit, a, b) }
+  | e = expression_without_sequence { e }
+  ;
+
+expression_without_sequence:
+  | wo_match = expression_without_match_without_sequence { wo_match }
   | m = match_with { m }
   ;
 
-expression_without_match:
-  | a = expression; SEMICOLON; b = expression
-    { Parsed.E_let (Parsed.P_unit, a, b) }
+expression_without_match_without_sequence:
   | f = simple_expression; args = nonempty_list(simple_expression_argument)
     { Parsed.E_apply (f, args) }
-  | v = VARIANT; e = expression_without_match { Parsed.E_constr (v, Some e) }
+  | v = VARIANT; e = expression_without_match_without_sequence { Parsed.E_constr (v, Some e) }
   | v = VARIANT { Parsed.E_constr (v, None) }
   | LET; i = IDENTIFIER; ps = nonempty_list(simple_pattern); EQUAL;
-    e = expression IN; body = expression_without_match
+    e = expression IN; body = expression_without_match_without_sequence
     { Parsed.E_let (Parsed.P_ident i, mk_fun e ps, body) }
   | LET; p = simple_pattern; EQUAL; e = expression; IN;
-    body = expression_without_match
+    body = expression_without_match_without_sequence
     { Parsed.E_let (p, e, body) }
   | FUN; ps = nonempty_list(simple_pattern); ARROW;
-    e = expression_without_match { mk_fun e ps }
+    e = expression_without_match_without_sequence { mk_fun e ps }
   | l = simple_expression; op = infix_operator; r = simple_expression
     { Parsed.E_apply (op, [l; r]) }
   | se = simple_expression { se }
@@ -138,5 +143,5 @@ match_with:
   ;
 
 match_case:
-  | p = pattern; ARROW; e = expression_without_match { (p, e) }
+  | p = pattern; ARROW; e = expression_without_match_without_sequence { (p, e) }
   ;
