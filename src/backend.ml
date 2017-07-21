@@ -301,7 +301,7 @@ let rec mk_pattern_match ~str ~abort
   | A.P_ident id ->
       let o = Closure_struct.find str id in
       mov value (Closure_struct.value o closure) |> run_
-  | A.P_wildcard -> []
+  | A.P_wildcard | A.P_unit -> []
   | A.P_int i ->
       cmp (const (mk_int i)) value >>
       jne abort |> run_
