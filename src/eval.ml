@@ -48,6 +48,7 @@ let rec repl ?(ctx=Ctx.empty) () =
         end
     | v, _ -> Interpret.I.to_string v in
 
+  Pervasives.flush_all ();
   print_string "> ";
   let go () =
     let s = Pervasives.read_line () in

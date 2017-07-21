@@ -1,4 +1,4 @@
-FROM ocaml/opam:alpine-3.3_ocaml-4.03.0_flambda as builder
+FROM ocaml/opam:alpine-3.3_ocaml-4.03.0 as builder
 
 RUN sudo apk add m4 expect make binutils gcc
 RUN opam depext conf-m4.1

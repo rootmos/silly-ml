@@ -1,0 +1,5 @@
+let x = 1;;
+print_int x;; print_newline ();;
+
+let x = 2;;
+print_int x;; print_newline ();;

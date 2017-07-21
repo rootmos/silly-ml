@@ -1,64 +1,102 @@
 #!/usr/bin/env expect
 spawn ./repl.native
 
+set timeout 5
+
 set prompt {> }
 
 expect -re $prompt
 send "7;;\r"
-expect "7: int"
+expect {
+    "7: int" {}
+    timeout { exit 1 }
+}
 
 expect -re $prompt
 send "type foo = A | B of int;;\r"
 
 expect -re $prompt
 send "A;;\r"
-expect "A: foo"
+expect {
+    "A: foo" {}
+    timeout { exit 1 }
+}
 
 expect -re $prompt
 send "B 7;;\r"
-expect "B 7: foo"
+expect {
+    "B 7: foo" {}
+    timeout { exit 1 }
+}
 
 expect -re $prompt
 send "let f x = match x with A -> 0 | B i -> i;;\r"
 
 expect -re $prompt
 send "f;;\r"
-expect "<fun>: foo -> int"
+expect {
+    "<fun>: foo -> int" {}
+    timeout { exit 1 }
+}
 
 expect -re $prompt
 send "f A;;\r"
-expect "0: int"
+expect {
+    "0: int" {}
+    timeout { exit 1 }
+}
 
 expect -re $prompt
 send "f (B 3);;\r"
-expect "3: int"
+expect {
+    "3: int" {}
+    timeout { exit 1 }
+}
 
 expect -re $prompt
 send "type bar = C of foo;;\r"
 
 expect -re $prompt
 send "C A;;\r"
-expect "C A: bar"
+expect {
+    "C A: bar" {}
+    timeout { exit 1 }
+}
 
 expect -re $prompt
 send "f (C A);;\r"
-expect "unification failed"
+expect {
+    "unification failed" {}
+    timeout { exit 1 }
+}
 
 expect -re $prompt
 send "((), 7);;\r"
-expect "((), 7): (unit, int)"
+expect {
+    "((), 7): (unit, int)" {}
+    timeout { exit 1 }
+}
 
 expect -re $prompt
 send "3 * (7 - (1 + 2));;\r"
-expect "12: int"
+expect {
+    "12: int" {}
+    timeout { exit 1 }
+}
 
 expect -re $prompt
 send "let x = 7;;\r"
 
 expect -re $prompt
 send "print_int x;; print_newline ();;\r"
-expect "7\r"
-expect "(): unit"
+expect {
+    "7\r" {}
+    timeout { exit 1 }
+}
+expect {
+    "(): unit" {}
+    timeout { exit 1 }
+}
 
 
 expect -re $prompt
@@ -66,26 +104,41 @@ send "let f x y = x + y;;\r"
 
 expect -re $prompt
 send "f;;\r"
-expect "<fun>: int -> int -> int"
+expect {
+    "<fun>: int -> int -> int" {}
+    timeout { exit 1 }
+}
 
 expect -re $prompt
 send "let g = f 1;;\r"
 
 expect -re $prompt
 send "g;;\r"
-expect "<fun>: int -> int"
+expect {
+    "<fun>: int -> int" {}
+    timeout { exit 1 }
+}
 
 expect -re $prompt
 send "let h = f 2;;\r"
 
 expect -re $prompt
 send "h;;\r"
-expect "<fun>: int -> int"
+expect {
+    "<fun>: int -> int" {}
+    timeout { exit 1 }
+}
 
 expect -re $prompt
 send "g 2;;\r"
-expect "3: int"
+expect {
+    "3: int" {}
+    timeout { exit 1 }
+}
 
 expect -re $prompt
 send "h 2;;\r"
-expect "4: int"
+expect {
+    "4: int" {}
+    timeout { exit 1 }
+}

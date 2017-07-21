@@ -1,4 +1,4 @@
-true: bin_annot, short_paths, package(core_kernel), use_menhir
+true: bin_annot, short_paths, package(core_kernel), use_menhir, package(ppx_inline_test.runner.lib)
 <**/*>: predicate(custom_ppx)
 <src/*.{ml,mli}>: ppx-driver(ppx_sexp_conv+ppx_inline_test+ppx_assert -inline-test-lib test)
 <src>: include

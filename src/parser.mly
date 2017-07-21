@@ -83,12 +83,14 @@ expression_without_match:
     { Parsed.E_apply (f, args) }
   | v = VARIANT; e = expression_without_match { Parsed.E_constr (v, Some e) }
   | v = VARIANT { Parsed.E_constr (v, None) }
-  | LET; i = IDENTIFIER; ps = nonempty_list(simple_pattern); EQUAL; e = expression
-    IN; body = expression_without_match
+  | LET; i = IDENTIFIER; ps = nonempty_list(simple_pattern); EQUAL;
+    e = expression IN; body = expression_without_match
     { Parsed.E_let (Parsed.P_ident i, mk_fun e ps, body) }
-  | LET; p = simple_pattern; EQUAL; e = expression; IN; body = expression_without_match
+  | LET; p = simple_pattern; EQUAL; e = expression; IN;
+    body = expression_without_match
     { Parsed.E_let (p, e, body) }
-  | FUN; ps = nonempty_list(simple_pattern); ARROW; e = expression_without_match { mk_fun e ps }
+  | FUN; ps = nonempty_list(simple_pattern); ARROW;
+    e = expression_without_match { mk_fun e ps }
   | l = simple_expression; op = infix_operator; r = simple_expression
     { Parsed.E_apply (op, [l; r]) }
   | se = simple_expression { se }
@@ -108,7 +110,8 @@ simple_expression_argument:
 simple_expression:
   | i = INT { Parsed.E_int i }
   | i = IDENTIFIER { Parsed.E_ident i }
-  | xs = delimited(LEFT_PAREN, separated_list(COMMA, expression), RIGHT_PAREN) { mk_tuple_expression xs }
+  | xs = delimited(LEFT_PAREN, separated_list(COMMA, expression), RIGHT_PAREN)
+    { mk_tuple_expression xs }
   ;
 
 pattern:
@@ -119,13 +122,15 @@ pattern:
 simple_pattern:
   | c = VARIANT { Parsed.P_constr (c, None) }
   | i = INT { Parsed.P_int i }
-  | _ = WILDCARD { Parsed.P_wildcard }
+  | WILDCARD { Parsed.P_wildcard }
   | i = IDENTIFIER { Parsed.P_ident i }
-  | xs = delimited(LEFT_PAREN, separated_list(COMMA, pattern), RIGHT_PAREN) { mk_tuple_pattern xs }
+  | xs = delimited(LEFT_PAREN, separated_list(COMMA, pattern), RIGHT_PAREN)
+    { mk_tuple_pattern xs }
   ;
 
 match_with:
-  | MATCH; x = expression; WITH; PIPE?; cs = separated_nonempty_list(PIPE, match_case)
+  | MATCH; x = expression; WITH; PIPE?;
+    cs = separated_nonempty_list(PIPE, match_case)
     { Parsed.E_match (x, cs) }
   ;
 
