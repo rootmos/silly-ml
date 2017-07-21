@@ -2,7 +2,7 @@ open Core_kernel.Std
 open Printf
 module A = Anf
 
-type register = RAX | RBX | RCX | RDX | R8 | R9 | R10 | RDI | RSI | RSP
+type register = RAX | RBX | RCX | RDX | R8 | R9 | R10 | R11 | RDI | RSI | RSP
 [@@deriving sexp]
 
 type label = string
@@ -63,6 +63,7 @@ end) = struct
   let r8  = R8
   let r9  = R9
   let r10 = R10
+  let r11 = R11
   let rdi = RDI
   let rsi = RSI
   let rsp = RSP
@@ -502,32 +503,37 @@ and go ~current_closure ~current_continuation ?(ctx=Ctx.empty) l =
       let cases_with_labels =
         List.(cases >>| fun c ->
           c, sprintf "__switch_case_%d" (fresh_identifier ())) in
-      let ctx, listings = Local.(
-        define (reg rdi) >>= fun value ->
-        define (reg rsi) >>= fun current_closure ->
-        define current_continuation >>= fun current_continuation ->
-        declare >>= fun mv ->
-        go_value ~current_closure ~target:mv v >>
-        let listings, ctx =
-          let rec go_case ctx ls = function
-            | [] -> ls, ctx
-            | (case, l) :: tail ->
-                let next_case = match tail with
-                | (_, l) :: _ -> label l
-                | [] -> label Abort.match_error.label in
-                let closure, ctx = mk_closure ~ctx ~abort:next_case case in
-                let ls' = Listing.(
-                  set_label l >>
-                  call closure.capture.label [current_closure; const 0] >>
-                  mov mv (reg rdi) >>
-                  mov (reg rax) (reg rsi) >>
-                  mov current_continuation (reg rdx) >>
-                  jmp (deref 0 rsi)
-                ) |> Listing.run_ in
-                go_case ctx (ls @ ls') tail in
+
+      (* This works with the assumption that r9, r8, r10 are restored
+       * after running the code in the captures' pattern matching, e.g.
+       * malloc and lookup_identifier.
+       *)
+      let (value, current_closure, current_continuation), l = Local.(
+        mov current_closure (reg r9) >>
+        mov current_continuation (reg r10) >>
+        go_value ~current_closure ~target:(reg r8) v >>
+        return @@ (reg r8, reg r9, reg r10)) |> Local.run in
+
+      let ctx, l' =
+        let rec go_case ctx ls = function
+          | [] -> ctx, ls
+          | (case, l) :: tail ->
+              let next_case = match tail with
+              | (_, l) :: _ -> Label l
+              | [] -> Label Abort.match_error.label in
+              let closure, ctx = mk_closure ~ctx ~abort:next_case case in
+              let ls' = Listing.(
+                set_label l >>
+                call closure.capture.label [current_closure; const 0] >>
+                mov value (reg rdi) >>
+                mov (reg rax) (reg rsi) >>
+                mov current_continuation (reg rdx) >>
+                jmp (deref 0 rsi)
+              ) |> Listing.run_ in
+              go_case ctx (ls @ ls') tail in
           go_case ctx [] cases_with_labels in
-        insert listings >> return ctx) |> Local.run in
-      listings, ctx
+      l @ l', ctx
+
 
 let lookup_identifier = {
   global = false;
@@ -558,6 +564,7 @@ module Output = struct
     | R8  -> "%r8"
     | R9  -> "%r9"
     | R10 -> "%r10"
+    | R11 -> "%r11"
     | RSP -> "%rsp"
 
   let operand = function
