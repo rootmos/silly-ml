@@ -29,6 +29,7 @@ rule read = parse
   | "with" { WITH }
   | "->" { ARROW }
   | ";;" { DOUBLE_SEMICOLON }
+  | ";" { SEMICOLON }
   | '=' { EQUAL }
   | '(' { LEFT_PAREN }
   | ')' { RIGHT_PAREN }

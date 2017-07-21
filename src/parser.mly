@@ -10,6 +10,7 @@
 %token ARROW
 %token ASTERISK
 %token DOUBLE_SEMICOLON
+%token SEMICOLON
 %token COMMA
 %token MATCH
 %token WITH
@@ -79,6 +80,8 @@ expression:
   ;
 
 expression_without_match:
+  | a = expression; SEMICOLON; b = expression
+    { Parsed.E_let (Parsed.P_unit, a, b) }
   | f = simple_expression; args = nonempty_list(simple_expression_argument)
     { Parsed.E_apply (f, args) }
   | v = VARIANT; e = expression_without_match { Parsed.E_constr (v, Some e) }
