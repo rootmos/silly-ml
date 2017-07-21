@@ -2,8 +2,12 @@ silly-ml
 ========
 [![Build Status](https://travis-ci.org/rootmos/silly-ml.svg?branch=master)](https://travis-ci.org/rootmos/silly-ml)
 
-`silly-ml` is a small ML-like, type-checked, interpreted language created because [it's weekend](https://www.isittheweekendyet.com/),
-written in [OCaml](https://ocaml.org/) and is inspired by [OCaml](https://github.com/ocaml/ocaml).
+`silly-ml` (aka [vacation-ml](https://en.wikipedia.org/wiki/Summer)) is a:
+* small ML-like, type-checked language,
+* both interpreted and compiled to x86-64 assembly,
+* created because [it's weekend](https://www.isittheweekendyet.com/) and
+* written in [OCaml](https://ocaml.org/) and inspired by
+  [OCaml](https://github.com/ocaml/ocaml).
 
 Usage
 -----
