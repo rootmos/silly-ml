@@ -1,0 +1,6 @@
+let f x = match x with
+  1 -> 1
+| 1 -> 2
+| _ -> 3;;
+
+print_int (f 1);; print_newline ();;
