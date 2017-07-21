@@ -1,0 +1,11 @@
+type foo = Foo | Bar of int * int;;
+type baz = Baz of foo;;
+
+let f x = match x with
+| Baz Foo -> 0
+| Baz (Bar (0, i)) -> i + 1
+| Baz (Bar (_, i)) -> i * 2;;
+
+print_int (f (Baz Foo));; print_newline ();;
+print_int (f (Baz (Bar (0, 2))));; print_newline ();;
+print_int (f (Baz (Bar (1, 2))));; print_newline ();;

@@ -1,0 +1,8 @@
+type foo = Foo | Bar of int;;
+
+let f x = match x with
+| Foo -> 0
+| Bar i -> i + 1;;
+
+print_int (f Foo);; print_newline ();;
+print_int (f (Bar 1));; print_newline ();;

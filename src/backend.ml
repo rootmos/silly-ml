@@ -233,7 +233,12 @@ let rec go_value ~current_closure ?(target=Register RAX) v =
   | A.V_ident id ->
       call "lookup_identifier" [current_closure; const id] >>
       mov (reg rax) target
-  | _ -> failwith "not implemented: go_value"
+  | A.V_tag (t, v) ->
+      go_value ~current_closure ~target:(reg r8) v >>
+      mallocw 2 >>
+      mov (const t) (derefw 0 rax) >>
+      mov (reg r8) (derefw 1 rax) >>
+      mov (reg rax) target
 
 module Closure_struct = struct
   type t = {
@@ -320,8 +325,15 @@ let rec mk_pattern_match ~str ~abort
         insert (mk_pattern_match ~str ~abort ~closure
           ~value:(reg rbx) b)
       ) |> Local.run_
-
-  | _ -> failwith "pattern not implemented"
+  | A.P_tag (t, p) ->
+      Listing.(
+        mov value (reg rax) >>
+        cmp (const t) (deref 0 rax) >>
+        jne abort >>
+        mov (derefw 1 rax) (reg rbx) >>
+        insert (mk_pattern_match ~str ~abort ~closure
+          ~value:(reg rbx) p)
+      ) |> Listing.run_
 
 let rec mk_closure ~ctx ?(abort=Label Abort.match_error.label) uc =
   let str = Closure_struct.mk uc in
