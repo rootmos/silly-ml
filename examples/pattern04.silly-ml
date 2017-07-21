@@ -1,0 +1,4 @@
+let f (a, b) = a + b;;
+let z = f (1, 2);;
+print_int z;;
+print_newline ();;

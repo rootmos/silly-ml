@@ -217,8 +217,10 @@ let rec go_value ~current_closure ?(target=Register RAX) v =
   | A.V_int i ->
       mov (const (mk_int i)) target
   | A.V_tuple (a, b) ->
+      define current_closure >>= fun current_closure ->
+
       declare >>= fun m ->
-      mallocw 3 >>
+      mallocw 2 >>
       mov (reg rax) m >>
 
       declare >>= fun ma ->
@@ -228,9 +230,10 @@ let rec go_value ~current_closure ?(target=Register RAX) v =
       go_value ~current_closure ~target:mb b >>
 
       mov m (reg rax) >>
-      mov (const 0) (derefw 0 rax) >>
-      mov ma (derefw 1 rax) >>
-      mov mb (derefw 2 rax) >>
+      mov ma (reg rbx) >>
+      mov (reg rbx) (derefw 0 rax) >>
+      mov mb (reg rbx) >>
+      mov (reg rbx) (derefw 1 rax) >>
 
       mov (reg rax) target
   | A.V_unit -> go_value ~current_closure ~target @@ A.V_int 0
@@ -297,14 +300,34 @@ end
 let rec mk_pattern_match ~str ~abort
   ?(value=Register RDI) ?(closure=RSI) p =
   let open Listing in
-  match p with
+  let comment = Comment (sprintf "matching: %s"
+    (Anf.sexp_of_pattern p |> Sexp.to_string_hum)) in
+  comment :: match p with
   | A.P_ident id ->
       let o = Closure_struct.find str id in
-      mov value (Closure_struct.value o closure) |> run_
+      Listing.(
+        mov value (Closure_struct.value o closure) |> run_
+      )
   | A.P_wildcard | A.P_unit -> []
   | A.P_int i ->
-      cmp (const (mk_int i)) value >>
-      jne abort |> run_
+      Listing.(
+        cmp (const (mk_int i)) value >>
+        jne abort |> run_
+      )
+  | A.P_tuple (a, b) ->
+      Local.(
+        define value >>= fun value' ->
+        mov value' (reg rax) >>
+        mov (derefw 0 rax) (reg rbx) >>
+        insert (mk_pattern_match ~str ~abort ~closure
+          ~value:(reg rbx) a) >>
+
+        mov value' (reg rax) >>
+        mov (derefw 1 rax) (reg rbx) >>
+        insert (mk_pattern_match ~str ~abort ~closure
+          ~value:(reg rbx) b)
+      ) |> Local.run_
+
   | _ -> failwith "pattern not implemented"
 
 let rec mk_closure ~current_closure ~ctx uc =
