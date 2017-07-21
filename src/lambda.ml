@@ -25,7 +25,7 @@ and expression =
 | E_apply of expression * expression list
 | E_let of pattern * expression * expression
 | E_tuple of expression * expression
-| E_switch of value * (pattern * expression) list
+| E_switch of value * switch_case list
 | E_uncaptured_closure of uncaptured_closure
   [@@deriving sexp]
 and captured_closure = {
@@ -38,6 +38,11 @@ and uncaptured_closure = {
   uc_body: expression;
   uc_free: int list
 } [@@deriving sexp]
+and switch_case = {
+  sc_p: pattern;
+  sc_body: expression;
+  sc_free: int list;
+}
 
 let rec pattern_captures = function
   | P_int _ | P_unit | P_wildcard -> []
@@ -61,9 +66,7 @@ let rec free e =
       free e @ set_minus (free body) (pattern_captures p)
   | E_uncaptured_closure uc -> uc.uc_free
   | E_switch (v, cases) ->
-      free_value v @ concat (
-        cases >>| fun (p, case) ->
-          set_minus (free case) (pattern_captures p))
+      free_value v @ concat (cases >>| fun c -> c.sc_free )
 
 type t = expression
 [@@deriving sexp]
@@ -171,19 +174,23 @@ let transform_to_lambda ?(ctx=Ctx.empty) typed =
         E_let (P_ident l, expression ctx e,
           E_value (V_tag (Ctx.lookup_constructor ctx c, V_ident l)))
     | T.E_match (T.E_ident id, cases, _) ->
-        let cases' = List.map cases ~f:(fun (p, body) ->
-          let p', ctx' = pattern ctx p in
-          let body' = expression ctx' body in
-          p', body') in
-        E_switch (Ctx.lookup_identifier ctx id, cases')
+        let f (p, body) =
+          let sc_p, ctx' = pattern ctx p in
+          let sc_body = expression ctx' body in
+          let sc_free = set_minus (free sc_body) (pattern_captures sc_p) in
+          { sc_p; sc_body; sc_free } in
+        E_switch (Ctx.lookup_identifier ctx id, List.map cases ~f)
     | T.E_match (e, cases, _) ->
-        let e' = expression ctx e in
+        let f (p, body) =
+          let sc_p, ctx' = pattern ctx p in
+          let sc_body = expression ctx' body in
+          let sc_free = set_minus (free sc_body) (pattern_captures sc_p) in
+          { sc_p; sc_body; sc_free } in
+
+        let e = expression ctx e in
         let el = fresh_identifier () in
-        let cases' = List.map cases ~f:(fun (p, body) ->
-          let p', ctx' = pattern ctx p in
-          let body' = expression ctx' body in
-          p', body') in
-        E_let (P_ident el, e', E_switch (V_ident el, cases')) in
+        let cases = List.map cases ~f in
+        E_let (P_ident el, e, E_switch (V_ident el, cases)) in
   let rec go ctx = function
     | [] -> E_value V_unit, ctx
     | (T.S_type_decl (_, td)) :: es -> go (Ctx.bind_type_decl ctx td) es

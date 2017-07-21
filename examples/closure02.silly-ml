@@ -1,0 +1,11 @@
+let x = 1;;
+print_int x;; print_newline ();;
+
+let f y = x + 1;;
+
+print_int (f 1);; print_newline ();;
+
+let x = 3;;
+print_int x;; print_newline ();;
+
+print_int (f 1);; print_newline ();;

@@ -116,6 +116,12 @@ let%test_unit "eval 'type foo = A of int | B;; let f x = match x with A i -> i |
   | Typed.Typed_exception Typed.Unification_failed -> ())
   ~expect:()
 
+let%test_unit "eval 'let z = (1, 2);; print_int z;;' should fail" =
+  [%test_result: unit]
+  (try (let _ = eval "let z = (1, 2);; print_int z;;" in failwith "failed!") with
+  | Typed.Typed_exception Typed.Unification_failed -> ())
+  ~expect:()
+
 let%test_unit "eval 7 + 4;;" =
   [%test_result: value]
   (eval "7 + 4;;")
@@ -141,7 +147,9 @@ let%test_unit "eval type foo = A | B of int;; let f x = match x with A -> 0 | B 
   (eval "type foo = A | B of int;; let f x = match x with A -> 0 | B i -> i;; f (B 3);;")
   ~expect:(V_int 3)
 
-let%test_unit "eval let a = 7;; let f x = a + x;; let 8 = f 1;; let a = 9;; f 1" =
+let%test_unit "eval let a = 7;; let f x = a + x;; let 8 = f 1;; let a = 9;; f 1;;" =
   [%test_result: value]
-  (eval "let a = 7;; let f x = a + x;; let 8 = f 1;; let a = 9;; f 1")
+  (eval "let a = 7;; let f x = a + x;; let 8 = f 1;; let a = 9;; f 1;;")
   ~expect:(V_int 8)
+
+let () = Ppx_inline_test_lib.Runtime.exit ()

@@ -19,9 +19,12 @@ let step ctx s =
   let open Ctx in
   let parsed = Parsed_helpers.parse s in
   let typed = Typed.introduce_types parsed in
-  let typed', typed_ctx, ot = Typed.unify_and_substitute ~ctx:ctx.typed_ctx typed in
-  let lambda, lambda_ctx = Lambda.transform_to_lambda ~ctx:ctx.lambda_ctx typed' in
-  let v, interpret_ctx = Interpret.interpret ~ctx:ctx.interpret_ctx lambda in
+  let typed', typed_ctx, ot =
+    Typed.unify_and_substitute ~ctx:ctx.typed_ctx typed in
+  let lambda, lambda_ctx =
+    Lambda.transform_to_lambda ~ctx:ctx.lambda_ctx typed' in
+  let v, interpret_ctx =
+    Interpret.interpret ~ctx:ctx.interpret_ctx lambda in
   let ctx' = { typed_ctx; lambda_ctx; interpret_ctx } in
   v, ctx', ot
 
@@ -45,31 +48,16 @@ let rec repl ?(ctx=Ctx.empty) () =
         end
     | v, _ -> Interpret.I.to_string v in
 
+  Pervasives.flush_all ();
   print_string "> ";
-  try
+  let go () =
     let s = Pervasives.read_line () in
     let v, ctx', ot = step ctx s in
-    begin match (v, ot) with
-    | _, None -> ()
-    | v, Some t -> printf "%s: %s\n" (pretty v t) (Typed.format_typ t)
+    begin match v, ot with
+      | _, None -> ()
+      | v, Some t -> printf "%s: %s\n" (pretty v t) (Typed.format_typ t)
     end;
-    repl ~ctx:ctx' ()
-  with
-  | Parsed_helpers.Parser_helpers_exception Parsed_helpers.Parsing ->
-      printf "parsing error\n";
-      repl ~ctx ()
-  | Parsed_helpers.Parser_helpers_exception (Parsed_helpers.Lexing msg) ->
-      printf "lexing error: %s\n" msg;
-      repl ~ctx ()
-  | Interpret.Interpret_exception error ->
-      printf "interpreter error: %s\n" (Interpret.format_error error);
-      repl ~ctx ()
-  | Lambda.Lambda_exception error ->
-      printf "lambda error: %s\n" (Lambda.format_error error);
-      repl ~ctx ()
-  | Typed.Typed_exception error ->
-      printf "typed error: %s\n" (Typed.format_error error);
-      repl ~ctx ()
-  | Sys.Break ->
-      Pervasives.print_newline (); repl ~ctx ()
+    repl ~ctx:ctx' () in
+  try Errors.run_with_pretty_errors ~err:(fun _ -> repl ~ctx ()) go with
+  | Sys.Break -> Pervasives.print_newline (); repl ~ctx ()
   | End_of_file -> ()

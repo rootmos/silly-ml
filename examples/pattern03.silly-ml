@@ -1,0 +1,5 @@
+let () = ();;
+
+let f () = 7;;
+print_int (f ());;
+print_newline ();;

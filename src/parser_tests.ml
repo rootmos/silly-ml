@@ -255,3 +255,12 @@ let%test_unit "parse: 1 + 2 + 3;;" =
   [%test_result: t]
   (parse "(1 + 2) + 3;;")
   ~expect:[S_expr (E_apply (E_ident "(+)", [E_apply (E_ident "(+)", [E_int 1; E_int 2]); E_int 3]))]
+
+let%test_unit "parse: let _ = 1 in let _ = 2 in 3;;" =
+  [%test_result: t]
+  (parse "let _ = 1 in let _ = 2 in 3;;")
+  ~expect:[S_expr
+    (E_let (P_wildcard, E_int 1,
+      E_let (P_wildcard, E_int 2, E_int 3)))]
+
+let () = Ppx_inline_test_lib.Runtime.exit ()

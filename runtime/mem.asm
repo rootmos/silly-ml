@@ -110,6 +110,11 @@ shlq $3, \dst
 #  %rax - allocated memory
 .global malloc
 malloc:
+    pushq %r8
+    pushq %r9
+    pushq %r10
+    pushq %r11
+    pushq %r13
     movq %rdi, %rax
     round %rax 3
     addq $8, %rax # add slot header size to required size
@@ -182,6 +187,11 @@ malloc_found_suitable_slot:
 malloc_done:
     movq %r9, %rax
     addq $8, %rax
+    popq %r13
+    popq %r11
+    popq %r10
+    popq %r9
+    popq %r8
     ret
 
 # input:
