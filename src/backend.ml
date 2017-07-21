@@ -5,8 +5,6 @@ module A = Anf
 type register = RAX | RBX | RCX | RDX | R8 | R9 | R10 | RDI | RSI | RSP
 [@@deriving sexp]
 
-let call_registers = [RDI; RSI; RDX; RCX; R8; R9]
-
 type label = string
 [@@deriving sexp]
 
@@ -97,6 +95,8 @@ module Asm_syntax(L: Listing_intf) = struct
   let deref b r = Dereference (b, r)
   let derefw w r = deref (words w) r
   let label l = Label l
+
+  let call_registers = [RDI; RSI; RDX; RCX; R8; R9]
 
   let call l args =
     let open List in
@@ -209,11 +209,13 @@ let fresh_identifier () =
   let id = !counter in
   incr counter; id
 
+let mk_int i = (i lsl 1) lor 0b1
+
 let rec go_value ~current_closure ?(target=Register RAX) v =
   let open Local in
   match v with
   | A.V_int i ->
-      mov (const ((i lsl 1) lor 0b1)) target
+      mov (const (mk_int i)) target
   | A.V_tuple (a, b) ->
       declare >>= fun m ->
       mallocw 3 >>
@@ -237,53 +239,113 @@ let rec go_value ~current_closure ?(target=Register RAX) v =
       mov (reg rax) target
   | _ -> failwith "not implemented: go_value"
 
-let rec mk_closure ~current_closure ~ctx
-  ({ A.uc_p; A.uc_free; A.uc_body } as uc) =
-  let pattern_captures = A.pattern_captures uc_p in
-  let offsets = uc_free @ pattern_captures |> List.dedup
-    |> List.mapi ~f:(fun o id -> (id, o)) in
+module Closure_struct = struct
+  type t = {
+    pattern_captures: int list;
+    offsets: (int * int) list;
+  }
+
+  let mk { A.uc_p; A.uc_free } =
+    let pattern_captures = A.pattern_captures uc_p in
+    let offsets = uc_free @ pattern_captures |> List.dedup
+      |> List.mapi ~f:(fun o id -> (id, o)) in
+    { pattern_captures; offsets }
+
+  let key_offset o = words ((2*o) + 2)
+  let value_offset o = words ((2*o) + 3)
+
+  let key o r = Local.(deref (key_offset o) r)
+  let value o r = Local.(deref (value_offset o) r)
+
+  let code_addr r = Local.(derefw 0 r)
+  let continuation r = Local.(derefw 1 r)
+
+  let size t = words ((2 * List.length t.offsets) + 2)
+
+  let captured_by_pattern t id = List.mem t.pattern_captures id ~equal:(=)
+
+  let find t id = List.Assoc.find_exn t.offsets id ~equal:(=)
+
+  let map t ~f = List.map t.offsets ~f
+end
+
+module Abort = struct
+  let messages = [
+    "__match_error_msg", "match error\\n";
+  ]
+
+  let abort = {
+    global = false; label = "__abort";
+    code = Local.(
+      define (reg rdi) >>= fun code ->
+      define (reg rsi) >>= fun msg ->
+      call "strlen" [msg] >>
+      call "write" [const 2; msg; reg rax] >>
+      call "exit" [code]
+    ) |> Local.run_
+  }
+
+  let match_error = {
+    global = false; label = "__match_error";
+    code = Listing.(
+      lea "__match_error_msg" (reg rsi) >>
+      call abort.label [const 2; reg rsi]
+    ) |> Listing.run_
+  }
+end
+
+let rec mk_pattern_match ~str ~abort
+  ?(value=Register RDI) ?(closure=RSI) p =
+  let open Listing in
+  match p with
+  | A.P_ident id ->
+      let o = Closure_struct.find str id in
+      mov value (Closure_struct.value o closure) |> run_
+  | A.P_wildcard -> []
+  | A.P_int i ->
+      cmp (const (mk_int i)) value >>
+      jne abort |> run_
+  | _ -> failwith "pattern not implemented"
+
+let rec mk_closure ~current_closure ~ctx uc =
+  let str = Closure_struct.mk uc in
   let l = sprintf "__f_%d" (fresh_identifier ()) in
-  let key_offset o = words ((2*o) + 2) in
-  let value_offset o = words ((2*o) + 3) in
   let body, ctx = go
     ~current_closure:(Register RSI)
-    ~current_continuation:(Register RDX) ~ctx uc_body in
+    ~current_continuation:(Register RDX) ~ctx uc.A.uc_body in
   let c = {
     capture = { global = false; label = l ^ "_capture";
       code = Local.(
         comment (sprintf "Capturing:\n%s"
           (Anf.sexp_of_uncaptured_closure uc |> Sexp.to_string_hum)) >>
         declare >>= fun new_capture ->
-        define (Register RDI) >>= fun parent_offsets ->
-        mallocw ((2 * List.length offsets) + 2) >>
+        define (reg rdi) >>= fun parent_offsets ->
+        malloc (Closure_struct.size str) >>
         mov (reg rax) new_capture >>
         comment "store address of generated evaluation code" >>
         lea l (reg rcx) >>
-        mov (reg rcx) (derefw 0 rax) >>
-        mov (Register RDX) (derefw 1 rax) >>
-        let os = List.map offsets ~f:(fun (id, o) ->
+        mov (reg rcx) (Closure_struct.code_addr rax) >>
+        mov (reg rdx) (Closure_struct.continuation rax) >>
+        let os = Closure_struct.map str ~f:(fun (id, o) ->
           mov new_capture (reg rbx) >>
-          mov (const id) (deref (key_offset o) rbx) >>
-          if List.mem pattern_captures id ~equal:(=)
-          then mov (const 0) (deref (value_offset o) rbx)
+          mov (const id) (Closure_struct.key o rbx) >>
+          if Closure_struct.captured_by_pattern str id
+          then mov (const 0) (Closure_struct.value o rbx)
           else
             call "lookup_identifier" [parent_offsets; const id] >>
             mov new_capture (reg rbx) >>
-            mov (reg rax) (deref (value_offset o) rbx)) in
+            mov (reg rax) (Closure_struct.value o rbx)) in
         all_ignore os >> mov new_capture (reg rax)) |> Local.ret
     };
     eval = {
       global = false; label = l; code =
-        [ Comment (sprintf "Evaluating:\n%s\n\n"
-          (Anf.sexp_of_expression uc_body |> Sexp.to_string_hum))
-        ] @
-        begin match uc_p with
-          | A.P_ident id ->
-              let o = List.Assoc.find_exn offsets id ~equal:(=) in
-              [ Mov (Register RDI, (Dereference (value_offset o, RSI))) ]
-          | A.P_wildcard -> []
-          | _ -> failwith "pattern not implemented"
-        end @ body
+        let comment = [
+          Comment (sprintf "Evaluating:\n%s\n\n"
+            (Anf.sexp_of_expression uc.A.uc_body |> Sexp.to_string_hum))
+        ] in
+        let pattern = mk_pattern_match ~str
+          ~abort:(Label Abort.match_error.label) uc.A.uc_p in
+        List.concat [comment; pattern; body]
     }
   } in
   c, Ctx.add ctx c
@@ -485,10 +547,12 @@ module Output = struct
     | Comment s -> String.split_lines s
         |> List.map ~f:(fun s -> "# " ^ s) |> String.concat ~sep:"\n"
 
+  let indentation = "  "
+
   let indent = function
     | Set_label _ -> ""
     | Comment _ -> ""
-    | _ -> "  "
+    | _ -> indentation
 
   let listing = List.map ~f:(fun o -> indent o ^ op o)
 
@@ -507,6 +571,13 @@ module Output = struct
     List.map ~f:closure ctx.Ctx.closures
       |> List.concat
       |> String.concat ~sep:"\n"
+
+  let of_string (l, s) = [
+    sprintf "%s:" l;
+    sprintf "%s.asciz \"%s\"" indentation s;
+  ]
+
+  let of_strings ss = List.map ~f:of_string ss |> List.concat
 end
 
 let anf_to_asm l =
@@ -532,11 +603,26 @@ let anf_to_asm l =
       call exit_capture.label [] >> mov (reg rax) (reg rdx) >>
       insert code |> run_)
   } in
-  let l = Output.of_ctx ctx
+  let d = Output.of_strings Abort.messages
+  and l = Output.of_ctx ctx
   and l' = List.map ~f:(fun ll ->
     Output.labelled_listing ll |> String.concat ~sep:"\n")
-  [ lookup_identifier; exit_closure; exit_capture; main; ] in
-  String.concat ~sep:"\n" @@ l :: l' @ [ "" ]
+  [
+    Abort.match_error;
+    Abort.abort;
+    lookup_identifier;
+    exit_closure;
+    exit_capture;
+    main;
+  ] in
+  String.concat ~sep:"\n" @@ List.concat [
+    [ ".data" ];
+    d;
+    [ ".text" ];
+    [ l ];
+    l';
+    [ "" ]
+  ]
 
 let format_error = function
 | Register_error r -> sprintf "register error %s" (Output.register r)

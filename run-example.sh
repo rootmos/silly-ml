@@ -20,7 +20,7 @@ ACTUAL_OUTPUT=$(mktemp $TEST_CASE.XXXXXX)
 trap "rm -f $ACTUAL_OUTPUT" EXIT
 
 set +e
-./$BINARY 2>&1 > $ACTUAL_OUTPUT
+./$BINARY > $ACTUAL_OUTPUT 2>&1
 EXIT_CODE=$?
 set -e
 
