@@ -227,8 +227,8 @@ let derive_constraints ?(ctx=Ctx.empty) typed =
         let ctx' = Ctx.bind_type ctx t decl in
         ctx', cs, None
     | S_expr e ->
-        let et, cs = expression ctx e in
-        ctx, cs, Some et in
+        let et, cs' = expression ctx e in
+        ctx, cs @ cs', Some et in
   fold_left ~init:(ctx, [], None) ~f:statement typed
 
 let rec substitute s t x =

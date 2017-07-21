@@ -4,8 +4,24 @@ open Printf
 let silly_to_asm input output =
   let source = In_channel.input_all input in
   let parsed = Parsed_helpers.parse source in
+
   let typed = Typed.introduce_types parsed in
+  if Config.verbose () then begin
+    Typed.sexp_of_t typed
+      |> Sexp.to_string_hum
+      |> printf "typed (not unified):\n%s\n";
+
+    let _, cs, _ = Typed.derive_constraints typed in
+    Typed.sexp_of_constrs cs
+      |> Sexp.to_string_hum
+      |> printf "constraints:\n%s\n";
+  end;
+
   let typed', _, _ = Typed.unify_and_substitute typed in
+  if Config.verbose () then
+    Typed.sexp_of_t typed'
+      |> Sexp.to_string_hum
+      |> printf "typed (unified):\n%s\n";
   let lambda, _ = Lambda.transform_to_lambda typed' in
   let anf = Anf.transform_to_anf lambda in
   let asm = Backend.anf_to_asm anf in
@@ -38,7 +54,8 @@ let () =
   let spec = [
     ("-o", Set_string output, "output");
     ("-c", Set only_compile, "only compile, don't assemble and link");
-    ("-L", Set_string ld_search_path, "library search path")
+    ("-L", Set_string ld_search_path, "library search path");
+    ("-v", Unit (fun _ -> Config.set_verbose true), "verbose");
   ] in
   parse spec (fun i -> input := Some i) "silly-ml to x64 compiler";
 
