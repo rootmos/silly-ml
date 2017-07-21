@@ -1,0 +1,8 @@
+type t = A of int | B of int;;
+
+match (A 1) with
+| B i -> ()
+| A i -> let _ = print_int i in print_newline ();;
+
+match (B 1) with
+| A i -> ();;
