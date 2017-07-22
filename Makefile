@@ -43,5 +43,6 @@ examples: $(foreach e, $(shell ls examples/*.silly-ml), $(e)-run)
 examples/%.silly-ml-run: examples/%.silly-ml compiler.native runtime/libruntime.a
 	./run-example.sh $<
 
+.PHONY: runtime/libruntime.a
 runtime/libruntime.a:
 	$(MAKE) -C runtime libruntime.a

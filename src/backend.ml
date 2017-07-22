@@ -24,6 +24,7 @@ type op =
 | Cmp of operand * operand
 | Shr of int * operand
 | Shl of int * operand
+| Inc of operand
 | Call of label
 | Push of operand
 | Pop of register
@@ -82,6 +83,8 @@ end) = struct
   let jmp o = L.tell [ Jmp o ]
   let ret = L.tell [ Ret ]
   let comment s = L.tell [ Comment s ]
+  let nop = L.tell []
+  let inc o = L.tell [ Inc o ]
 
   let const i = Constant i
   let reg r = Register r
@@ -244,13 +247,18 @@ module Closure_struct = struct
   type t = {
     pattern_captures: int list;
     offsets: (int * int) list;
+    self: int option;
   }
 
-  let mk { A.uc_p; A.uc_free } =
+  let mk { A.uc_p; A.uc_free; A.uc_self } =
+    let open List in
     let pattern_captures = A.pattern_captures uc_p in
-    let offsets = uc_free @ pattern_captures |> List.dedup
-      |> List.mapi ~f:(fun o id -> (id, o)) in
-    { pattern_captures; offsets }
+    let self = uc_self in
+    let offsets =
+      concat [uc_free; pattern_captures; Option.to_list self]
+      |> dedup
+      |> mapi ~f:(fun o id -> (id, o)) in
+    { pattern_captures; offsets; self; }
 
   let key_offset o = words ((2*o) + 2)
   let value_offset o = words ((2*o) + 3)
@@ -314,6 +322,7 @@ let rec mk_pattern_match ~str ~abort
       )
   | A.P_tuple (a, b) ->
       Local.(
+        (* TODO: this leaks stack memory when sub-patterns fail in switches *)
         define value >>= fun value' ->
         mov value' (reg rax) >>
         mov (derefw 0 rax) (reg rbx) >>
@@ -348,17 +357,22 @@ let rec mk_closure ~ctx ?(abort=Label Abort.match_error.label) uc =
           (Anf.sexp_of_uncaptured_closure uc |> Sexp.to_string_hum)) >>
         declare >>= fun new_capture ->
         define (reg rdi) >>= fun parent_offsets ->
+        define (reg rdx) >>= fun current_continuation ->
         malloc (Closure_struct.size str) >>
         mov (reg rax) new_capture >>
         comment "store address of generated evaluation code" >>
         lea l (reg rcx) >>
         mov (reg rcx) (Closure_struct.code_addr rax) >>
-        mov (reg rdx) (Closure_struct.continuation rax) >>
+        mov (current_continuation) (reg rcx) >>
+        mov (reg rcx) (Closure_struct.continuation rax) >>
         let os = Closure_struct.map str ~f:(fun (id, o) ->
           mov new_capture (reg rbx) >>
           mov (const id) (Closure_struct.key o rbx) >>
           if Closure_struct.captured_by_pattern str id
           then mov (const 0) (Closure_struct.value o rbx)
+          else if Option.exists str.Closure_struct.self ~f:((=) id)
+          then mov new_capture (reg rax) >>
+            mov (reg rax) (Closure_struct.value o rbx)
           else
             call "lookup_identifier" [parent_offsets; const id] >>
             mov new_capture (reg rbx) >>
@@ -390,7 +404,7 @@ and go ~current_closure ~current_continuation ?(ctx=Ctx.empty) l =
       let (arg, cc), l = Local.(
         define (current_continuation) >>= fun cc ->
         go_value ~current_closure v >>
-        mov cc (reg rdx) >> return ((reg rax), (reg rdx))
+        mov cc (reg rdx) >> return (reg rax, reg rdx)
         ) |> Local.run in
       (l @ call_continuation cc arg), ctx
   | A.E_this_and_then { A.this; A.and_then } ->
@@ -410,13 +424,17 @@ and go ~current_closure ~current_continuation ?(ctx=Ctx.empty) l =
       ls @ ls', ctx
   | A.E_uncaptured_closure uc ->
       let c, ctx = mk_closure ~ctx uc in
-      let l = Listing.(
-        call c.capture.label [current_closure; Constant 0] |> run_) in
-      let l' = call_continuation current_continuation (Register RAX) in
+      let (k, arg), l = Local.(
+        define current_continuation >>= fun current_continuation ->
+        call c.capture.label [current_closure; Constant 0] >>
+        mov current_continuation (reg rbx) >>
+        return (reg rbx, reg rax)
+      ) |> Local.run in
+      let l' = call_continuation k arg in
       l @ l', ctx
   | A.E_apply (a, b) ->
       let jo, ls = Local.(
-        define (reg rsi) >>= fun current_closure ->
+        define current_closure >>= fun current_closure ->
         comment "remember current continuation" >>
         define current_continuation >>= fun cc ->
         declare >>= fun ma ->
@@ -432,7 +450,7 @@ and go ~current_closure ~current_continuation ?(ctx=Ctx.empty) l =
       ls @ [Jmp jo], ctx
   | A.E_primitive ("%plus%", [a; b]) ->
       let (arg, cc), l = Local.(
-        define (reg rsi) >>= fun current_closure ->
+        define current_closure >>= fun current_closure ->
         define current_continuation >>= fun cc ->
         declare >>= fun ma ->
         comment "fetch first operand" >>
@@ -444,12 +462,13 @@ and go ~current_closure ~current_continuation ?(ctx=Ctx.empty) l =
         comment "I think therefore I sum..." >>
         add ma (reg rdi) >>
         shl 1 (reg rdi) >>
+        inc (reg rdi) >>
         mov cc (reg rdx) >>
         return (reg rdi, reg rdx)) |> Local.run in
       (l @ call_continuation cc arg), ctx
   | A.E_primitive ("%minus%", [a; b]) ->
       let (arg, cc), l = Local.(
-        define (reg rsi) >>= fun current_closure ->
+        define current_closure >>= fun current_closure ->
         define current_continuation >>= fun cc ->
         declare >>= fun ma ->
         comment "fetch first operand" >>
@@ -461,12 +480,13 @@ and go ~current_closure ~current_continuation ?(ctx=Ctx.empty) l =
         sub (reg rdi) ma >>
         mov ma (reg rdi) >>
         shl 1 (reg rdi) >>
+        inc (reg rdi) >>
         mov cc (reg rdx) >>
         return (reg rdi, reg rdx)) |> Local.run in
       (l @ call_continuation cc arg), ctx
   | A.E_primitive ("%times%", [a; b]) ->
       let (arg, cc), l = Local.(
-        define (reg rsi) >>= fun current_closure ->
+        define current_closure >>= fun current_closure ->
         define current_continuation >>= fun cc ->
         declare >>= fun ma ->
         comment "fetch first operand" >>
@@ -477,6 +497,7 @@ and go ~current_closure ~current_continuation ?(ctx=Ctx.empty) l =
         shr 1 (reg rdi) >>
         mul ma (reg rdi) >>
         shl 1 (reg rdi) >>
+        inc (reg rdi) >>
         mov cc (reg rdx) >>
         return (reg rdi, reg rdx)) |> Local.run in
       (l @ call_continuation cc arg), ctx
@@ -487,7 +508,6 @@ and go ~current_closure ~current_continuation ?(ctx=Ctx.empty) l =
         call "exit" [reg rdi]) |> Local.run_, ctx
   | A.E_primitive ("%print_int%", [a]) ->
       let (arg, cc), l = Local.(
-        define (reg rsi) >>= fun current_closure ->
         define current_continuation >>= fun cc ->
         comment "fetch operand" >>
         go_value ~current_closure ~target:(reg rdi) a >>
@@ -502,7 +522,6 @@ and go ~current_closure ~current_continuation ?(ctx=Ctx.empty) l =
       (l @ call_continuation cc arg), ctx
   | A.E_primitive ("%print_newline%", [_]) ->
       let (arg, cc), l = Local.(
-        define (reg rsi) >>= fun current_closure ->
         define current_continuation >>= fun cc ->
         call "write_newline" [const 1] >>
         (* TODO: add asserts *)
@@ -595,6 +614,7 @@ module Output = struct
     | Cmp (o1, o2) -> sprintf "cmpq %s, %s" (operand o1) (operand o2)
     | Shr (n, o) -> sprintf "shrq $%d, %s" n (operand o)
     | Shl (n, o) -> sprintf "shlq $%d, %s" n (operand o)
+    | Inc o -> sprintf "incq %s" (operand o)
     | Call s -> sprintf "call %s" s
     | Push o -> sprintf "pushq %s" (operand o)
     | Pop r -> sprintf "popq %s" (register r)

@@ -1,0 +1,7 @@
+let sum n =
+  let rec go acc i = match i with
+    | 0 -> acc
+    | _ -> go (acc + i) (i - 1) in
+  go 0 n;;
+
+print_int (sum 6); print_newline ();;
