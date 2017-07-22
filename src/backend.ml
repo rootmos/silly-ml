@@ -205,7 +205,6 @@ let fresh_identifier () =
   let id = !counter in
   incr counter; id
 
-
 module Flags_field = struct
   let size = words 1
 
@@ -226,6 +225,8 @@ module Flags_field = struct
       mov (const @@ encode_kind kind) target >>
       shl (64-8) target >>
       add (const arity) target)
+
+  let get_kind target = Local.(shr (64-8) target)
 end
 
 module Tuple_struct = struct
@@ -247,46 +248,6 @@ module Tag_struct = struct
 
   let set target = Flags_field.(set { kind = Tag; arity = 1 } target)
 end
-
-let mk_int i = (i lsl 1) lor 0b1
-
-let rec go_value ~current_closure ?(target=Register RAX) v =
-  let open Local in
-  match v with
-  | A.V_int i ->
-      mov (const (mk_int i)) target
-  | A.V_tuple (a, b) ->
-      define current_closure >>= fun current_closure ->
-
-      declare >>= fun m ->
-      malloc Tuple_struct.size >>
-      mov (reg rax) m >>
-
-      declare >>= fun ma ->
-      go_value ~current_closure ~target:ma a >>
-
-      declare >>= fun mb ->
-      go_value ~current_closure ~target:mb b >>
-
-      mov m (reg rax) >>
-      mov ma (reg rbx) >>
-      mov (reg rbx) (Tuple_struct.a rax) >>
-      mov mb (reg rbx) >>
-      mov (reg rbx) (Tuple_struct.b rax) >>
-      Tuple_struct.set (Tuple_struct.flags rax) >>
-
-      mov (reg rax) target
-  | A.V_unit -> go_value ~current_closure ~target @@ A.V_int 0
-  | A.V_ident id ->
-      call "lookup_identifier" [current_closure; const id] >>
-      mov (reg rax) target
-  | A.V_tag (t, v) ->
-      go_value ~current_closure ~target:(reg r8) v >>
-      malloc Tag_struct.size >>
-      mov (const t) (Tag_struct.tag rax) >>
-      mov (reg r8) (Tag_struct.value rax) >>
-      Tag_struct.set (Tag_struct.flags rax) >>
-      mov (reg rax) target
 
 module Closure_struct = struct
   type t = {
@@ -350,6 +311,63 @@ module Abort = struct
     ) |> Listing.run_
   }
 end
+
+let lookup_identifier = {
+  global = false;
+  label = "lookup_identifier";
+  code = Listing.(
+    let id = reg rsi in
+    mov (reg rdi) (reg rbx) >>
+    add (const Closure_struct.header_size) (reg rbx) >>
+    set_label "lookup_identifier_loop" >>
+    cmp (deref 0 rbx) id >>
+    je (label "lookup_identifier_done") >>
+    add (const (words 2)) (reg rbx) >>
+    jmp (label "lookup_identifier_loop") >>
+    set_label "lookup_identifier_done" >>
+    mov (derefw 1 rbx) (reg rax) >>
+    ret |> run_)
+}
+
+let mk_int i = (i lsl 1) lor 0b1
+
+let rec go_value ~current_closure ?(target=Register RAX) v =
+  let open Local in
+  match v with
+  | A.V_int i ->
+      mov (const (mk_int i)) target
+  | A.V_tuple (a, b) ->
+      define current_closure >>= fun current_closure ->
+
+      declare >>= fun m ->
+      malloc Tuple_struct.size >>
+      mov (reg rax) m >>
+
+      declare >>= fun ma ->
+      go_value ~current_closure ~target:ma a >>
+
+      declare >>= fun mb ->
+      go_value ~current_closure ~target:mb b >>
+
+      mov m (reg rax) >>
+      mov ma (reg rbx) >>
+      mov (reg rbx) (Tuple_struct.a rax) >>
+      mov mb (reg rbx) >>
+      mov (reg rbx) (Tuple_struct.b rax) >>
+      Tuple_struct.set (Tuple_struct.flags rax) >>
+
+      mov (reg rax) target
+  | A.V_unit -> go_value ~current_closure ~target @@ A.V_int 0
+  | A.V_ident id ->
+      call lookup_identifier.label [current_closure; const id] >>
+      mov (reg rax) target
+  | A.V_tag (t, v) ->
+      go_value ~current_closure ~target:(reg r8) v >>
+      malloc Tag_struct.size >>
+      mov (const t) (Tag_struct.tag rax) >>
+      mov (reg r8) (Tag_struct.value rax) >>
+      Tag_struct.set (Tag_struct.flags rax) >>
+      mov (reg rax) target
 
 let rec mk_pattern_match ~str ~abort
   ?(value=Register RDI) ?(closure=RSI) p =
@@ -425,7 +443,7 @@ let rec mk_closure ~ctx ?(abort=Label Abort.match_error.label) uc =
           then mov new_capture (reg rax) >>
             mov (reg rax) (Closure_struct.value o rbx)
           else
-            call "lookup_identifier" [parent_offsets; const id] >>
+            call lookup_identifier.label [parent_offsets; const id] >>
             mov new_capture (reg rbx) >>
             mov (reg rax) (Closure_struct.value o rbx)) in
         all_ignore os >> mov new_capture (reg rax)) |> Local.ret
@@ -616,23 +634,6 @@ and go ~current_closure ~current_continuation ?(ctx=Ctx.empty) l =
           go_case ctx [] cases_with_labels in
       l @ l', ctx
 
-
-let lookup_identifier = {
-  global = false;
-  label = "lookup_identifier";
-  code = Listing.(
-    let id = reg rsi in
-    mov (reg rdi) (reg rbx) >>
-    add (const Closure_struct.header_size) (reg rbx) >>
-    set_label "lookup_identifier_loop" >>
-    cmp (deref 0 rbx) id >>
-    je (label "lookup_identifier_done") >>
-    add (const (words 2)) (reg rbx) >>
-    jmp (label "lookup_identifier_loop") >>
-    set_label "lookup_identifier_done" >>
-    mov (derefw 1 rbx) (reg rax) >>
-    ret |> run_)
-}
 
 
 module Output = struct
