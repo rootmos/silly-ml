@@ -205,6 +205,41 @@ let fresh_identifier () =
   let id = !counter in
   incr counter; id
 
+
+module Flags_field = struct
+  let size = words 1
+
+  type kind = Closure | Tuple | Tag
+
+  type t = {
+    kind: kind;
+    arity: int;
+  }
+
+  let encode_kind = function
+    | Closure -> 0b001
+    | Tuple ->   0b010
+    | Tag ->     0b100
+
+  let set { kind; arity; } target =
+    Local.(
+      mov (const @@ encode_kind kind) target >>
+      shl (64-8) target >>
+      add (const arity) target)
+end
+
+module Tuple_struct = struct
+  let size = Flags_field.size + words 2
+
+  let flags r = Local.(deref 0 r)
+  let a r = Local.(deref (Flags_field.size) r)
+  let b r = Local.(deref (Flags_field.size + words 1) r)
+
+  let set target = Flags_field.(set { kind = Tuple; arity = 2 } target)
+end
+
+
+
 let mk_int i = (i lsl 1) lor 0b1
 
 let rec go_value ~current_closure ?(target=Register RAX) v =
@@ -216,7 +251,7 @@ let rec go_value ~current_closure ?(target=Register RAX) v =
       define current_closure >>= fun current_closure ->
 
       declare >>= fun m ->
-      mallocw 2 >>
+      malloc Tuple_struct.size >>
       mov (reg rax) m >>
 
       declare >>= fun ma ->
@@ -227,9 +262,10 @@ let rec go_value ~current_closure ?(target=Register RAX) v =
 
       mov m (reg rax) >>
       mov ma (reg rbx) >>
-      mov (reg rbx) (derefw 0 rax) >>
+      mov (reg rbx) (Tuple_struct.a rax) >>
       mov mb (reg rbx) >>
-      mov (reg rbx) (derefw 1 rax) >>
+      mov (reg rbx) (Tuple_struct.b rax) >>
+      Tuple_struct.set (Tuple_struct.flags rax) >>
 
       mov (reg rax) target
   | A.V_unit -> go_value ~current_closure ~target @@ A.V_int 0
@@ -260,18 +296,19 @@ module Closure_struct = struct
       |> mapi ~f:(fun o id -> (id, o)) in
     { pattern_captures; offsets; self; }
 
-  let header_size = words 3
+  let header_size = words 2 + Flags_field.size
   let key_offset o = words ((2*o)) + header_size
   let value_offset o = words ((2*o) + 1) + header_size
 
   let key o r = Local.(deref (key_offset o) r)
   let value o r = Local.(deref (value_offset o) r)
 
-  let flags_addr r = Local.(derefw 0 r)
-  let code_addr r = Local.(derefw 1 r)
-  let continuation r = Local.(derefw 2 r)
+  let flags r = Local.(deref 0 r)
+  let code_addr r = Local.(deref (Flags_field.size) r)
+  let continuation r = Local.(deref (Flags_field.size + words 1) r)
 
-  let size t = words (2 * List.length t.offsets) + header_size
+  let length t = List.length t.offsets
+  let size t = words (2 * length t) + header_size
 
   let captured_by_pattern t id = List.mem t.pattern_captures id ~equal:(=)
 
@@ -327,12 +364,12 @@ let rec mk_pattern_match ~str ~abort
         (* TODO: this leaks stack memory when sub-patterns fail in switches *)
         define value >>= fun value' ->
         mov value' (reg rax) >>
-        mov (derefw 0 rax) (reg rbx) >>
+        mov (Tuple_struct.a rax) (reg rbx) >>
         insert (mk_pattern_match ~str ~abort ~closure
           ~value:(reg rbx) a) >>
 
         mov value' (reg rax) >>
-        mov (derefw 1 rax) (reg rbx) >>
+        mov (Tuple_struct.b rax) (reg rbx) >>
         insert (mk_pattern_match ~str ~abort ~closure
           ~value:(reg rbx) b)
       ) |> Local.run_
@@ -367,6 +404,9 @@ let rec mk_closure ~ctx ?(abort=Label Abort.match_error.label) uc =
         mov (reg rcx) (Closure_struct.code_addr rax) >>
         mov (current_continuation) (reg rcx) >>
         mov (reg rcx) (Closure_struct.continuation rax) >>
+        Flags_field.(
+          set { kind = Closure; arity = Closure_struct.length str }
+            (Closure_struct.flags rax)) >>
         let os = Closure_struct.map str ~f:(fun (id, o) ->
           mov new_capture (reg rbx) >>
           mov (const id) (Closure_struct.key o rbx) >>
