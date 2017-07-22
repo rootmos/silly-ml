@@ -238,7 +238,15 @@ module Tuple_struct = struct
   let set target = Flags_field.(set { kind = Tuple; arity = 2 } target)
 end
 
+module Tag_struct = struct
+  let size = Flags_field.size + words 2
 
+  let flags r = Local.(deref 0 r)
+  let tag r = Local.(deref (Flags_field.size) r)
+  let value r = Local.(deref (Flags_field.size + words 1) r)
+
+  let set target = Flags_field.(set { kind = Tag; arity = 1 } target)
+end
 
 let mk_int i = (i lsl 1) lor 0b1
 
@@ -274,9 +282,10 @@ let rec go_value ~current_closure ?(target=Register RAX) v =
       mov (reg rax) target
   | A.V_tag (t, v) ->
       go_value ~current_closure ~target:(reg r8) v >>
-      mallocw 2 >>
-      mov (const t) (derefw 0 rax) >>
-      mov (reg r8) (derefw 1 rax) >>
+      malloc Tag_struct.size >>
+      mov (const t) (Tag_struct.tag rax) >>
+      mov (reg r8) (Tag_struct.value rax) >>
+      Tag_struct.set (Tag_struct.flags rax) >>
       mov (reg rax) target
 
 module Closure_struct = struct
@@ -376,9 +385,9 @@ let rec mk_pattern_match ~str ~abort
   | A.P_tag (t, p) ->
       Listing.(
         mov value (reg rax) >>
-        cmp (const t) (deref 0 rax) >>
+        cmp (const t) (Tag_struct.tag rax) >>
         jne abort >>
-        mov (derefw 1 rax) (reg rbx) >>
+        mov (Tag_struct.value rax) (reg rbx) >>
         insert (mk_pattern_match ~str ~abort ~closure
           ~value:(reg rbx) p)
       ) |> Listing.run_
