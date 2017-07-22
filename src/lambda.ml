@@ -159,14 +159,15 @@ let transform_to_lambda ?(ctx=Ctx.empty) typed =
     | T.E_fun (p, body) ->
         let uc_p, ctx' = pattern ctx p in
         let uc_body = expression ctx' body in
-        let uc_free = set_minus (free uc_body) (pattern_captures uc_p) in
+        let uc_free = set_minus (free uc_body) (pattern_captures uc_p)
+          |> List.dedup in
         E_uncaptured_closure { uc_p ; uc_body; uc_free; uc_self = None }
     | T.E_rec_fun (id, _, p, body) ->
         let self, ctx' = Ctx.new_identifier ctx id in
         let uc_p, ctx'' = pattern ctx' p in
         let uc_body = expression ctx'' body in
         let uc_free = set_minus (free uc_body)
-          (self :: pattern_captures uc_p) in
+          (self :: pattern_captures uc_p) |> List.dedup in
         E_uncaptured_closure { uc_p ; uc_body; uc_free; uc_self = Some self }
     | T.E_apply (T.E_ident id, args, _) ->
         let args' = List.map ~f:(expression ctx) args in
@@ -186,7 +187,8 @@ let transform_to_lambda ?(ctx=Ctx.empty) typed =
         let f (p, body) =
           let sc_p, ctx' = pattern ctx p in
           let sc_body = expression ctx' body in
-          let sc_free = set_minus (free sc_body) (pattern_captures sc_p) in
+          let sc_free =
+            set_minus (free sc_body) (pattern_captures sc_p) |> List.dedup in
           { sc_p; sc_body; sc_free } in
         E_switch (Ctx.lookup_identifier ctx id, List.map cases ~f)
     | T.E_match (e, cases, _) ->

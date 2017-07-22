@@ -167,4 +167,14 @@ let%test_unit "eval let sum n = let rec go acc i = match i with 0 -> acc | _ -> 
   (eval "let sum n = let rec go acc i = match i with 0 -> acc | _ -> go (acc + i) (i - 1) in go 0 n;; sum 6;;")
   ~expect:(V_int 21)
 
+let%test_unit "eval let rec fib n = match n with 0 -> 1 | 1 -> 1 | m -> (fib (m - 1)) + (fib (m - 2));; fib 6;;" =
+  [%test_result: value]
+  (eval "let rec fib n = match n with 0 -> 0 | 1 -> 1 | n -> (fib (n - 1)) + (fib (n - 2));; fib 6;;")
+  ~expect:(V_int 8)
+
+let%test_unit "eval let rec fib n = match n with 0 -> 1 | 1 -> 1 | _ -> (fib (n - 1)) + (fib (n - 2));; fib 7;;" =
+  [%test_result: value]
+  (eval "let rec fib n = match n with 0 -> 0 | 1 -> 1 | n -> (fib (n - 1)) + (fib (n - 2));; fib 7;;")
+  ~expect:(V_int 13)
+
 let () = Ppx_inline_test_lib.Runtime.exit ()
