@@ -60,5 +60,15 @@ typed error: unification failed
 3: int
 > h 2;;
 4: int
+> let sum n = let rec go acc i = match i with 0 -> acc | _ -> go (acc + i) (i - 1) in go 0 n;;
+> sum;;
+<fun>: int -> int
+> sum 6;;
+21: int
+> let rec fib n = match n with 0 -> 0 | 1 -> 1 | n -> (fib (n - 1)) + (fib (n - 2));;
+> fib 5;;
+5: int
+> fib 6;;
+8: int
 >
 ```
