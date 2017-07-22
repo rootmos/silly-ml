@@ -30,19 +30,6 @@ module Ctx = struct
     | None -> raise @@ Interpret_exception (Unbound_identifier id)
 end
 
-let rec pattern_match ctx p v =
-  match (p, v) with
-  | _, V_ident id -> Ctx.lookup ctx id |> pattern_match ctx p
-  | P_ident id, v' -> Ctx.bind ctx id v'
-  | P_tuple (a, b), V_tuple (x, y) ->
-      let ctx' = pattern_match ctx a x in
-      pattern_match ctx' b y
-  | P_int i, V_int i' when i = i' -> ctx
-  | P_unit, V_unit -> ctx
-  | P_wildcard, _ -> ctx
-  | P_tag (t, p), V_tag (t', v) when t = t' -> pattern_match ctx p v
-  | _ -> raise @@ Interpret_exception Match_error
-
 let rec capture_pattern_match ctx p v =
   match (p, v) with
   | _, V_ident id -> Ctx.lookup ctx id |> capture_pattern_match ctx p
@@ -71,12 +58,10 @@ let rec reduce ?(l=0) ctx e =
   match e with
   | E_value v -> reduce_value v, ctx
   | E_let (p, e, body) ->
-      reduce ~l ctx @@ E_apply (E_value (
-        V_captured_closure {
-          cc_p = p;
-          cc_body = body;
-          cc_captures = []
-        }), [e])
+      let e, _ = reduce ~l ctx e in
+      let cs = capture_pattern_match ctx p e in
+      let ctx = Ctx.extend ctx cs in
+      reduce ~l ctx body
   | E_apply (E_value (V_predef id), args) ->
       let rev_args, ctx' = List.fold_left args ~init:([], ctx)
         ~f:(fun (args, ctx) a ->
@@ -87,38 +72,46 @@ let rec reduce ?(l=0) ctx e =
       | "(-)", V_int a :: V_int b :: [] -> V_int (a - b), ctx
       | "(*)", V_int a :: V_int b :: [] -> V_int (a * b), ctx
       | "print_int", V_int a :: [] -> Pervasives.print_int a; V_unit, ctx
-      | "print_newline", V_unit :: [] -> Pervasives.print_newline (); V_unit, ctx
+      | "print_newline", V_unit :: [] ->
+          Pervasives.print_newline (); V_unit, ctx
       | _ -> raise @@ Interpret_exception Unreachable end
   | E_apply (E_value (V_ident id), args) ->
       reduce ~l ctx @@ E_apply (E_value (Ctx.lookup ctx id), args)
-  | E_apply (E_value (
-    V_captured_closure { cc_p; cc_body; cc_captures }), a :: args) ->
+  | E_apply ( E_value (
+    V_captured_closure { cc_p; cc_body; cc_captures; cc_self } as cc),
+    a :: args) ->
       let a', _ = reduce ~l ctx a in
       let cs = capture_pattern_match ctx cc_p a' in
-      let ctx' = Ctx.extend ctx @@ cs@cc_captures in
+      let self_ref = Option.(cc_self >>| (fun s -> s, cc) |> to_list) in
+      let ctx' = Ctx.extend ctx @@ cs @ self_ref @ cc_captures in
       let body', _ = reduce ~l ctx' cc_body in
-      reduce ~l ctx' @@ E_apply (E_value body', args)
+      let v, _ = reduce ~l ctx' @@ E_apply (E_value body', args) in
+      v, ctx
   | E_apply (E_value v, []) -> v, ctx
   | E_apply (_, _) -> raise @@ Interpret_exception Unreachable
-  | E_uncaptured_closure { uc_p; uc_body; uc_free } ->
+  | E_uncaptured_closure { uc_p; uc_body; uc_free; uc_self } ->
       V_captured_closure {
         cc_p = uc_p;
         cc_body = uc_body;
-        cc_captures = List.(uc_free >>| fun id -> id, Ctx.lookup ctx id)
+        cc_captures = List.(uc_free >>| fun id -> id, Ctx.lookup ctx id);
+        cc_self = uc_self;
       }, ctx
   | E_switch (V_ident id, cases) ->
       reduce ~l ctx @@ E_switch (Ctx.lookup ctx id, cases)
-  | E_switch (v, { L.sc_p; L.sc_body } :: cs) ->
-      begin try reduce ~l (pattern_match ctx sc_p v) sc_body with
+  | E_switch (v, { L.sc_p; L.sc_body; L.sc_free } :: cs) ->
+      begin try
+        let cs = capture_pattern_match ctx sc_p v in
+        let ctx = Ctx.extend ctx cs in
+        reduce ~l ctx sc_body with
       | Interpret_exception Match_error ->
         reduce ~l ctx @@ E_switch (v, cs)
       end
+  | E_switch (v, []) ->
+      raise @@ Interpret_exception Match_error
   | E_tuple (x, y) ->
       let x', _ = reduce ~l ctx x
       and y', _ = reduce ~l ctx y in
       V_tuple (x', y'), ctx
-  | E_switch (v, []) ->
-      raise @@ Interpret_exception Match_error
 
 
 module I = struct

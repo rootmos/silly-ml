@@ -29,19 +29,15 @@ and expression =
 | E_this_and_then of this_and_then
 | E_uncaptured_closure of uncaptured_closure
   [@@deriving sexp]
-and captured_closure = {
-  cc_p: pattern;
-  cc_body: expression;
-  cc_captures: (identifier * value) list
-} [@@deriving sexp]
 and uncaptured_closure = {
   uc_p: pattern;
   uc_body: expression;
-  uc_free: identifier list
+  uc_free: identifier list;
+  uc_self: identifier option;
 } [@@deriving sexp]
 and this_and_then = {
   this: expression;
-  and_then: uncaptured_closure
+  and_then: uncaptured_closure;
 } [@@deriving sexp]
 
 type t = expression
@@ -80,10 +76,10 @@ let transform_to_anf lambda =
     and b = L.fresh_identifier () in
     E_uncaptured_closure {
       uc_p = P_ident a;
-      uc_free = [];
+      uc_free = []; uc_self = None;
       uc_body = E_uncaptured_closure {
         uc_p = P_ident b;
-        uc_free = [a];
+        uc_free = [a]; uc_self = None;
         uc_body = E_primitive (p, [V_ident a; V_ident b])
       }
     } in
@@ -92,7 +88,7 @@ let transform_to_anf lambda =
     let a = L.fresh_identifier () in
     E_uncaptured_closure {
       uc_p = P_ident a;
-      uc_free = [];
+      uc_free = []; uc_self = None;
       uc_body = E_primitive (p, [V_ident a])
     } in
 
@@ -123,12 +119,12 @@ let transform_to_anf lambda =
         this = expression a;
         and_then = {
           uc_p = P_ident a';
-          uc_free = [];
+          uc_free = []; uc_self = None;
           uc_body = E_this_and_then {
             this = expression b;
             and_then = {
               uc_p = P_ident b';
-              uc_free = [a'];
+              uc_free = [a']; uc_self = None;
               uc_body = E_value (V_tuple (V_ident a', V_ident b'))
             }
           }
@@ -139,14 +135,15 @@ let transform_to_anf lambda =
         this = expression e;
         and_then = {
           uc_p = pattern p;
-          uc_free = set_minus (L.free body) (L.pattern_captures p);
+          uc_free = set_minus (L.free body) (L.pattern_captures p) |> dedup;
+          uc_self = None;
           uc_body = expression body
         }
       }
-  | L.E_uncaptured_closure { L.uc_p; L.uc_body; L.uc_free } ->
+  | L.E_uncaptured_closure { L.uc_p; L.uc_body; L.uc_free; L.uc_self } ->
       let uc_p = pattern uc_p
       and uc_body = expression uc_body in
-      E_uncaptured_closure { uc_p; uc_body; uc_free }
+      E_uncaptured_closure { uc_p; uc_body; uc_free; uc_self }
   | L.E_apply (f, args) ->
       let rec go id = function
         | [] -> raise @@ Anf_exception Unreachable
@@ -155,7 +152,7 @@ let transform_to_anf lambda =
               this = e;
               and_then = {
                 uc_p = P_ident id';
-                uc_free = [id];
+                uc_free = [id]; uc_self = None;
                 uc_body = E_apply (V_ident id, V_ident id')
               }
             }
@@ -165,13 +162,13 @@ let transform_to_anf lambda =
               this = e;
               and_then = {
                 uc_p = P_ident id';
-                uc_free = id :: ts;
+                uc_free = id :: ts |> dedup; uc_self = None;
                 uc_body = E_this_and_then {
                   this = E_apply (V_ident id, V_ident id');
                   and_then =
                     let id'' = L.fresh_identifier () in {
                       uc_p = P_ident id'';
-                      uc_free = ts;
+                      uc_free = ts; uc_self = None;
                       uc_body = go id'' tail;
                     }
                 }
@@ -184,6 +181,7 @@ let transform_to_anf lambda =
         and_then = {
           uc_p = P_ident id;
           uc_free = xs >>| (fun (_, _, fs) -> fs) |> concat |> dedup;
+          uc_self = None;
           uc_body = go id xs
         }
       }
@@ -191,7 +189,8 @@ let transform_to_anf lambda =
       let f { L.sc_p; L.sc_body; L.sc_free } = {
         uc_p = pattern sc_p;
         uc_body = expression sc_body;
-        uc_free = sc_free
+        uc_free = sc_free;
+        uc_self = None;
       } in
       E_switch (value v, cases >>| f) in
 

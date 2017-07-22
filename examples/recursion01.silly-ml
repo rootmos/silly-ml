@@ -1,0 +1,2 @@
+let rec go i = match i with 0 -> 10 | j -> go (j - 1) in
+print_int (go 5); print_newline ();;

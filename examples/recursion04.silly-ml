@@ -1,0 +1,8 @@
+let rec fib n = match n with
+| 0 -> 0
+| 1 -> 1
+| _ -> (fib (n - 1)) + (fib (n - 2));;
+
+print_int (fib 7); print_newline ();;
+print_int (fib 8); print_newline ();;
+print_int (fib 9); print_newline ();;
