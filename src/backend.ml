@@ -260,16 +260,18 @@ module Closure_struct = struct
       |> mapi ~f:(fun o id -> (id, o)) in
     { pattern_captures; offsets; self; }
 
-  let key_offset o = words ((2*o) + 2)
-  let value_offset o = words ((2*o) + 3)
+  let header_size = words 3
+  let key_offset o = words ((2*o)) + header_size
+  let value_offset o = words ((2*o) + 1) + header_size
 
   let key o r = Local.(deref (key_offset o) r)
   let value o r = Local.(deref (value_offset o) r)
 
-  let code_addr r = Local.(derefw 0 r)
-  let continuation r = Local.(derefw 1 r)
+  let flags_addr r = Local.(derefw 0 r)
+  let code_addr r = Local.(derefw 1 r)
+  let continuation r = Local.(derefw 2 r)
 
-  let size t = words ((2 * List.length t.offsets) + 2)
+  let size t = words (2 * List.length t.offsets) + header_size
 
   let captured_by_pattern t id = List.mem t.pattern_captures id ~equal:(=)
 
@@ -393,12 +395,12 @@ let rec mk_closure ~ctx ?(abort=Label Abort.match_error.label) uc =
   c, Ctx.add ctx c
 and go ~current_closure ~current_continuation ?(ctx=Ctx.empty) l =
   let call_continuation k arg =
-    Listing.(
+    Local.(
       comment "calling continuation" >>
       mov arg (reg rdi) >>
       mov k (reg rsi) >>
-      mov (derefw 1 rsi) (reg rdx) >>
-      jmp (derefw 0 rsi) |> run_) in
+      mov (Closure_struct.continuation rsi) (reg rdx) >>
+      jmp (Closure_struct.code_addr rsi) |> run_) in
   match l with
   | A.E_value v ->
       let (arg, cc), l = Local.(
@@ -445,7 +447,7 @@ and go ~current_closure ~current_continuation ?(ctx=Ctx.empty) l =
         comment "call function using current continuation" >>
         mov ma (reg rsi) >>
         mov cc (reg rdx) >>
-        return @@ deref 0 rsi
+        return @@ Closure_struct.code_addr rsi
       ) |> Local.run in
       ls @ [Jmp jo], ctx
   | A.E_primitive ("%plus%", [a; b]) ->
@@ -559,7 +561,7 @@ and go ~current_closure ~current_continuation ?(ctx=Ctx.empty) l =
                 mov value (reg rdi) >>
                 mov (reg rax) (reg rsi) >>
                 mov current_continuation (reg rdx) >>
-                jmp (deref 0 rsi)
+                jmp (Closure_struct.code_addr rsi)
               ) |> Listing.run_ in
               go_case ctx (ls @ ls') tail in
           go_case ctx [] cases_with_labels in
@@ -572,7 +574,7 @@ let lookup_identifier = {
   code = Listing.(
     let id = reg rsi in
     mov (reg rdi) (reg rbx) >>
-    add (const (words 2)) (reg rbx) >>
+    add (const Closure_struct.header_size) (reg rbx) >>
     set_label "lookup_identifier_loop" >>
     cmp (deref 0 rbx) id >>
     je (label "lookup_identifier_done") >>
@@ -673,10 +675,10 @@ let anf_to_asm l =
   let exit_capture = {
     global = false; label = exit_closure.label ^ "_capture";
     code = Local.(
-      mallocw 2 >>
+      malloc Closure_struct.header_size >>
       lea exit_closure.label (reg rcx) >>
-      mov (reg rcx) (derefw 0 rax) >>
-      mov (const 0) (derefw 1 rax)
+      mov (reg rcx) (Closure_struct.code_addr rax) >>
+      mov (const 0) (Closure_struct.continuation rax)
     ) |> Local.ret
   } in
   let main = {
