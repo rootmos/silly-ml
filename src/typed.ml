@@ -36,6 +36,7 @@ type expression =
 | E_unit
 | E_let of pattern * expression * expression
 | E_fun of pattern * expression
+| E_rec_fun of string * typ * pattern * expression
 | E_match of expression * (pattern * expression) list * typ
 [@@deriving sexp]
 
@@ -81,6 +82,8 @@ let introduce_types parsed =
         and args' = args >>| expression in
         E_apply (f', args', fresh_typevar ())
     | P.E_fun (p, e) -> E_fun (pattern p, expression e)
+    | P.E_rec_fun (id, p, e) ->
+        E_rec_fun (id, fresh_typevar (), pattern p, expression e)
     | P.E_tuple (a, b) -> E_tuple (expression a, expression b)
     | P.E_let (p, e, body) -> E_let (pattern p, expression e, expression body)
     | P.E_constr (t, oe) -> E_constr (t, Option.map ~f:expression oe)
@@ -189,12 +192,19 @@ let derive_constraints ?(ctx=Ctx.empty) typed =
         let ft, cs = expression ctx f
         and at, cs' =
           args >>| expression ctx
-            |> fold_right ~init:(t,[]) ~f:(fun (t, cs) (s, cs') -> T_fun (t, s), cs @ cs')
+            |> fold_right ~init:(t,[]) ~f:(
+              fun (t, cs) (s, cs') -> T_fun (t, s), cs @ cs')
         in t, (ft, at) :: cs @ cs'
     | E_fun (p, body) ->
         let pt, ctx', cs = pattern ctx p in
         let et, cs' = expression ctx' body in
         T_fun (pt, et), cs @ cs'
+    | E_rec_fun (id, t, p, body) ->
+        let ctx' = Ctx.bind ctx id t in
+        let pt, ctx'', cs = pattern ctx' p in
+        let et, cs' = expression ctx'' body in
+        let t' = T_fun (pt, et) in
+        t, (t, t') :: cs @ cs'
     | E_tuple (a, b) ->
         let at, cs = expression ctx a in
         let bt, cs' = expression ctx b in
@@ -203,7 +213,7 @@ let derive_constraints ?(ctx=Ctx.empty) typed =
         let pt, ctx', cs = pattern ctx p in
         let et, cs' = expression ctx e
         and bt, cs'' = expression ctx' body in
-        et, (pt, et) :: cs @ cs' @ cs''
+        bt, (pt, et) :: cs @ cs' @ cs''
     | E_match (e, cases, t) ->
         let et, cs = expression ctx e in
         let cs' = fold_left ~init:[] ~f:(fun acc (p, body) ->
@@ -248,14 +258,16 @@ let rec occurs s = function
   | T_fun (a, b) -> occurs s a || occurs s b
   | _ -> false
 
-let rec unify = function
+let rec unify cs =
+  let open List in
+  match cs with
   | [] -> ident
   | (s, t) :: cs when s = t -> unify cs
   | (T_var _ as s, t) :: cs when not (occurs s t) ->
-      let cs' = List.map ~f:(fun (a, b) -> (substitute s t a, substitute s t b)) cs in
+      let cs' = cs >>| fun (a, b) -> substitute s t a, substitute s t b in
       Fn.compose (unify cs') (substitute s t)
   | (s, (T_var _ as t)) :: cs when not (occurs t s) ->
-      let cs' = List.map ~f:(fun (a, b) -> (substitute t s a, substitute t s b)) cs in
+      let cs' = cs >>| fun (a, b) -> substitute t s a, substitute t s b in
       Fn.compose (unify cs') (substitute t s)
   | (T_fun (s1, s2), T_fun (t1, t2)) :: cs ->
       unify @@ (s1, t1) :: (s2, t2) :: cs
@@ -276,10 +288,13 @@ let unify_and_substitute ?(ctx=Ctx.empty) typed =
     | P_constr (c, op) -> P_constr (c, Option.map ~f:pattern op) in
   let rec expression = function
     | E_int _ | E_unit | E_ident _ as e -> e
-    | E_apply (f, args, t) -> E_apply (expression f, args >>| expression, sub t)
+    | E_apply (f, args, t) ->
+      E_apply (expression f, args >>| expression, sub t)
     | E_tuple (a, b) -> E_tuple (expression a, expression b)
     | E_let (p, e, body) -> E_let (pattern p, expression e, expression body)
     | E_fun (p, body) -> E_fun (pattern p, expression body)
+    | E_rec_fun (id, t, p, body) ->
+      E_rec_fun (id, sub t, pattern p, expression body)
     | E_constr (c, oe) -> E_constr (c, Option.(oe >>| expression))
     | E_match (e, cases, t) ->
         let cases' = cases >>| fun (p, body) -> pattern p, expression body in
@@ -288,5 +303,7 @@ let unify_and_substitute ?(ctx=Ctx.empty) typed =
     | S_let (p, e) -> S_let (pattern p, expression e)
     | S_type_decl _ as x -> x
     | S_expr e -> S_expr (expression e) in
-  let ctx' = { ctx with bindings = ctx.bindings >>| fun (id, t) -> id, sub t } in
+  let ctx' = {
+    ctx with bindings = ctx.bindings >>| fun (id, t) -> id, sub t
+  } in
   typed >>| statement, ctx', Option.map ~f:sub ot

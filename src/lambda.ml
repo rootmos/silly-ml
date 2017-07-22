@@ -31,12 +31,14 @@ and expression =
 and captured_closure = {
   cc_p: pattern;
   cc_body: expression;
-  cc_captures: (int * value) list
+  cc_captures: (int * value) list;
+  cc_self: int option;
 } [@@deriving sexp]
 and uncaptured_closure = {
   uc_p: pattern;
   uc_body: expression;
-  uc_free: int list
+  uc_free: int list;
+  uc_self: int option;
 } [@@deriving sexp]
 and switch_case = {
   sc_p: pattern;
@@ -158,7 +160,14 @@ let transform_to_lambda ?(ctx=Ctx.empty) typed =
         let uc_p, ctx' = pattern ctx p in
         let uc_body = expression ctx' body in
         let uc_free = set_minus (free uc_body) (pattern_captures uc_p) in
-        E_uncaptured_closure { uc_p ; uc_body; uc_free }
+        E_uncaptured_closure { uc_p ; uc_body; uc_free; uc_self = None }
+    | T.E_rec_fun (id, _, p, body) ->
+        let self, ctx' = Ctx.new_identifier ctx id in
+        let uc_p, ctx'' = pattern ctx' p in
+        let uc_body = expression ctx'' body in
+        let uc_free = set_minus (free uc_body)
+          (self :: pattern_captures uc_p) in
+        E_uncaptured_closure { uc_p ; uc_body; uc_free; uc_self = Some self }
     | T.E_apply (T.E_ident id, args, _) ->
         let args' = List.map ~f:(expression ctx) args in
         E_apply (E_value (Ctx.lookup_identifier ctx id), args')

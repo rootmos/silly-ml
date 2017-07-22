@@ -122,6 +122,11 @@ let%test_unit "eval 'let z = (1, 2);; print_int z;;' should fail" =
   | Typed.Typed_exception Typed.Unification_failed -> ())
   ~expect:()
 
+let%test_unit "eval let f x = let y = () in (x + 1);; (f 2) + 3;;" =
+  [%test_result: value]
+  (eval "let f x = let y = () in (x + 1);; (f 2) + 3;;")
+  ~expect:(V_int 6)
+
 let%test_unit "eval 7 + 4;;" =
   [%test_result: value]
   (eval "7 + 4;;")
@@ -151,5 +156,15 @@ let%test_unit "eval let a = 7;; let f x = a + x;; let 8 = f 1;; let a = 9;; f 1;
   [%test_result: value]
   (eval "let a = 7;; let f x = a + x;; let 8 = f 1;; let a = 9;; f 1;;")
   ~expect:(V_int 8)
+
+let%test_unit "eval let rec go i = match i with 0 -> 10 | j -> go (j - 1) in go 5;;" =
+  [%test_result: value]
+  (eval "let rec go i = match i with 0 -> 10 | j -> go (j - 1) in go 5;;")
+  ~expect:(V_int 10)
+
+let%test_unit "eval let sum n = let rec go acc i = match i with 0 -> acc | _ -> go (acc + i) (i - 1) in go 0 n;; sum 6;;" =
+  [%test_result: value]
+  (eval "let sum n = let rec go acc i = match i with 0 -> acc | _ -> go (acc + i) (i - 1) in go 0 n;; sum 6;;")
+  ~expect:(V_int 21)
 
 let () = Ppx_inline_test_lib.Runtime.exit ()

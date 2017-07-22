@@ -142,3 +142,21 @@ expect {
     "4: int" {}
     timeout { exit 1 }
 }
+
+expect -re $prompt
+send "let sum n = let rec go acc i = match i with 0 -> acc | _ -> go (acc + i) (i - 1) in go 0 n;;\r"
+
+
+expect -re $prompt
+send "sum;;\r"
+expect {
+    "<fun>: int -> int" {}
+    timeout { exit 1 }
+}
+
+expect -re $prompt
+send "sum 6;;\r"
+expect {
+    "21: int" {}
+    timeout { exit 1 }
+}

@@ -75,7 +75,8 @@ let rec reduce ?(l=0) ctx e =
         V_captured_closure {
           cc_p = p;
           cc_body = body;
-          cc_captures = []
+          cc_captures = [];
+          cc_self = None;
         }), [e])
   | E_apply (E_value (V_predef id), args) ->
       let rev_args, ctx' = List.fold_left args ~init:([], ctx)
@@ -87,24 +88,28 @@ let rec reduce ?(l=0) ctx e =
       | "(-)", V_int a :: V_int b :: [] -> V_int (a - b), ctx
       | "(*)", V_int a :: V_int b :: [] -> V_int (a * b), ctx
       | "print_int", V_int a :: [] -> Pervasives.print_int a; V_unit, ctx
-      | "print_newline", V_unit :: [] -> Pervasives.print_newline (); V_unit, ctx
+      | "print_newline", V_unit :: [] ->
+          Pervasives.print_newline (); V_unit, ctx
       | _ -> raise @@ Interpret_exception Unreachable end
   | E_apply (E_value (V_ident id), args) ->
       reduce ~l ctx @@ E_apply (E_value (Ctx.lookup ctx id), args)
-  | E_apply (E_value (
-    V_captured_closure { cc_p; cc_body; cc_captures }), a :: args) ->
+  | E_apply ( E_value (
+    V_captured_closure { cc_p; cc_body; cc_captures; cc_self } as cc),
+    a :: args) ->
       let a', _ = reduce ~l ctx a in
       let cs = capture_pattern_match ctx cc_p a' in
-      let ctx' = Ctx.extend ctx @@ cs@cc_captures in
+      let self_ref = Option.(cc_self >>| (fun s -> s, cc) |> to_list) in
+      let ctx' = Ctx.extend ctx @@ cs @ self_ref @ cc_captures in
       let body', _ = reduce ~l ctx' cc_body in
       reduce ~l ctx' @@ E_apply (E_value body', args)
   | E_apply (E_value v, []) -> v, ctx
   | E_apply (_, _) -> raise @@ Interpret_exception Unreachable
-  | E_uncaptured_closure { uc_p; uc_body; uc_free } ->
+  | E_uncaptured_closure { uc_p; uc_body; uc_free; uc_self } ->
       V_captured_closure {
         cc_p = uc_p;
         cc_body = uc_body;
-        cc_captures = List.(uc_free >>| fun id -> id, Ctx.lookup ctx id)
+        cc_captures = List.(uc_free >>| fun id -> id, Ctx.lookup ctx id);
+        cc_self = uc_self;
       }, ctx
   | E_switch (V_ident id, cases) ->
       reduce ~l ctx @@ E_switch (Ctx.lookup ctx id, cases)
