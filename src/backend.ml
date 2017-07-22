@@ -26,6 +26,7 @@ type op =
 | Shr of int * operand
 | Shl of int * operand
 | Inc of operand
+| Dec of operand
 | Call of label
 | Push of operand
 | Pop of register
@@ -33,6 +34,7 @@ type op =
 | Je of operand
 | Jne of operand
 | Jz of operand
+| Jnz of operand
 | Set_label of label
 | Comment of string
 | Ret
@@ -84,11 +86,13 @@ end) = struct
   let jne o = L.tell [ Jne o ]
   let je o = L.tell [ Je o ]
   let jz o = L.tell [ Jz o ]
+  let jnz o = L.tell [ Jnz o ]
   let jmp o = L.tell [ Jmp o ]
   let ret = L.tell [ Ret ]
   let comment s = L.tell [ Comment s ]
   let nop = L.tell []
   let inc o = L.tell [ Inc o ]
+  let dec o = L.tell [ Dec o ]
   let push o = L.tell [ Push o ]
   let pop o = L.tell [ Pop o ]
 
@@ -367,10 +371,12 @@ let mark = {
     define (reg rdi) >>= function value ->
     comment "check if it's an integer" >>
     Int_struct.is_int value >>
-    je (label "__mark_done") >>
+    jnz (label "__mark_done") >>
 
     comment "make our mark" >>
     call "mark" [value] >>
+    test (reg rax) (reg rax) >>
+    jz (label "__mark_done") >>
 
     comment "fetch its kind" >>
     mov value (reg rax) >>
@@ -380,7 +386,7 @@ let mark = {
 
     comment "is it a closure?" >>
     Flags_field.(test_kind Closure kind) >>
-    jne (label "__mark_tuple") >>
+    jz (label "__mark_tuple") >>
 
     comment "mark its continuation" >>
     let tmp1, tmp2 = rax, reg rdi in
@@ -406,19 +412,26 @@ let mark = {
     mov arity tmp >> cmp tmp offset >>
     je (label "__mark_done") >>
     comment "calculate offset and set marks recursively" >>
-    let tmp = reg rdi in
-    mov offset tmp >>
-    Closure_struct.encode_value_offset_in_place tmp >>
-    call "__mark" [tmp] >>
-    comment "increment and loop" >>
+    let tmp1, tmp2 = reg rax, rbx in
+    mov offset tmp1 >>
+    Closure_struct.encode_value_offset_in_place tmp1 >>
+    mov value (reg tmp2) >>
+    add tmp1 (reg tmp2) >>
     inc offset >>
+    mov (deref 0 tmp2) tmp1 >>
+    test tmp1 tmp1 >>
+    jz (label "__mark_closure_loop") >>
+
+    call "__mark" [tmp1] >>
+    comment "increment and loop" >>
+
     jmp (label "__mark_closure_loop") >>
 
 
     set_label "__mark_tuple" >>
     comment "is it a tuple?" >>
     Flags_field.(test_kind Tuple kind) >>
-    jne (label "__mark_tag") >>
+    jz (label "__mark_tag") >>
     let tmp = rax in
     mov value (reg tmp) >>
     call "__mark" [Tuple_struct.a tmp] >>
@@ -437,13 +450,26 @@ let mark = {
   ) |> Local.ret
 }
 
+let gc_countdown_label = "__gc_countdown"
+
 let gc = {
   global = false;
   label = "__gc";
   code = Local.(
-    call mark.label [reg rdi] >>
-    call "sweep" []
-  ) |> Local.run_
+    mov (label gc_countdown_label) (reg rax) >>
+    test (reg rax) (reg rax) >>
+    jnz (label "__gc_done") >>
+    mov (const 20) (label gc_countdown_label) >>
+
+    define (reg rdi) >>= fun arg ->
+    define (reg rsi) >>= fun closure ->
+    call mark.label [arg] >>
+    call mark.label [closure] >>
+    call "sweep" [] >>
+
+    set_label "__gc_done" >>
+    dec (label gc_countdown_label)
+  ) |> Local.ret
 }
 
 let rec go_value ~current_closure ?(target=Register RAX) v =
@@ -580,7 +606,7 @@ and go ~current_closure ~current_continuation ?(ctx=Ctx.empty) l =
       mov (Closure_struct.continuation rsi) (reg rdx) >>
 
       push (reg rdi) >> push (reg rsi) >> push (reg rdx) >>
-      call gc.label [reg rsi] >>
+      call gc.label [reg rdi; reg rsi] >>
       pop rdx >> pop rsi >> pop rdi >>
 
       jmp (Closure_struct.code_addr rsi) |> run_) in
@@ -781,6 +807,7 @@ module Output = struct
     | Shr (n, o) -> sprintf "shrq $%d, %s" n (operand o)
     | Shl (n, o) -> sprintf "shlq $%d, %s" n (operand o)
     | Inc o -> sprintf "incq %s" (operand o)
+    | Dec o -> sprintf "decq %s" (operand o)
     | Call s -> sprintf "call %s" s
     | Push o -> sprintf "pushq %s" (operand o)
     | Pop r -> sprintf "popq %s" (register r)
@@ -792,6 +819,8 @@ module Output = struct
     | Je l -> sprintf "je %s" (operand l)
     | Jz ((Dereference _) as o)  -> sprintf "jz *%s" (operand o)
     | Jz l -> sprintf "jz %s" (operand l)
+    | Jnz ((Dereference _) as o)  -> sprintf "jnz *%s" (operand o)
+    | Jnz l -> sprintf "jnz %s" (operand l)
     | Ret -> sprintf "ret"
     | Set_label l -> sprintf "%s:" l
     | Comment s -> String.split_lines s
@@ -869,6 +898,7 @@ let anf_to_asm l =
   ] in
   String.concat ~sep:"\n" @@ List.concat [
     [ ".data" ];
+    [ gc_countdown_label ^ ": .quad 0"];
     d;
     [ ".text" ];
     [ l ];

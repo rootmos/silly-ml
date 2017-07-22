@@ -48,12 +48,6 @@ defragment_countdown:
     andb $0b11111101, \flags
 .endm
 
-#   - ZF=0 if \flags are marked or free
-#   - ZF=1 if \flags neither
-.macro is_marked_or_free flags
-    testb $0b11, \flags
-.endm
-
 .macro slot_size slot dest
     movq (\slot), \dest
     shlq $8, \dest
@@ -92,7 +86,6 @@ new_chunk:
     movq %rbx, 16(%rax)
     # set flags
     set_free 23(%rax)
-    unset_mark 23(%rax)
 
     ret
 
@@ -189,7 +182,7 @@ malloc_found_suitable_slot:
 
     movq %r13, (%rbx) # set new slot's size
     set_free 7(%rbx)  # set its free flag
-    unset_mark 7(%rbx)  # unset its marked flag
+    unset_mark 7(%rbx)
 
 malloc_done:
     movq %r9, %rax
@@ -221,10 +214,18 @@ free_done:
 
 # input:
 #  %rdi - allocated memory to be marked
+# output:
+#  %rax - 1 if mark was set, 0 if already set
 .global mark
 mark:
+    is_marked -1(%rdi)
+    jz mark_do_set_mark
+    movq $0, %rax
+    ret
+mark_do_set_mark:
     set_mark -1(%rdi)  # set its mark flag
-
+    movq $1, %rax
+    ret
 
 defragment:
     movq root_chunk, %r10 # %r10 := current chunk
@@ -284,17 +285,12 @@ sweep_consider_slot:
     cmpq %rcx, %rbx   # check if its at the edge of the chunk
     je sweep_chunk_done
 
-    slot_size %rbx, %r8   # %r8 := current slot size
+    slot_size %rbx %r8   # %r8 := current slot size
 
-    is_marked 7(%rbx)
-    jz sweep_handle_free
+    is_marked 7(%rbx)           # if slot is marked
+    jnz sweep_unmark_and_move_to_next_slot # move to next slot
 
-    set_free 7(%rbx)
-    unset_mark 7(%rbx)
-
-sweep_handle_free:
-    is_free 7(%rbx)
-    jz sweep_move_to_next_slot
+    set_free 7(%rbx)            # if not, mark it as free
 
     mov %rbx, %r12
     addq %r8, %r12
@@ -302,14 +298,20 @@ sweep_handle_free:
     cmpq %rcx, %r12   # check if its at the edge of the chunk
     je sweep_chunk_done
 
-    is_marked_or_free 7(%r12)  # check if next slot is free or marked (ie
-    jz sweep_move_to_next_slot # would become free anyway)
+    is_marked 7(%r12)            # check if next slot marked:
+    jnz sweep_move_to_next_slot  # if not, it should be freed
 
     slot_size %r12 %r13
     addq %r13, (%rbx)
     addq %r13, %r8
 
+    jmp sweep_move_to_next_slot
+
+sweep_unmark_and_move_to_next_slot:
+    unset_mark 7(%rbx)
+
 sweep_move_to_next_slot:
+
     addq %r8, %rbx
     jmp sweep_consider_slot
 
