@@ -28,7 +28,7 @@ let go s =
   (*Backend.sexp_of_listing y |> Sexp.to_string_hum |> print_endline;*)
   (*Backend.Ctx.sexp_of_t ctx |> Sexp.to_string_hum |> print_endline;*)
 
-  (*Backend.anf_to_asm anf |> print_string;*)
+  Backend.anf_to_asm anf |> print_string;
 
   Pervasives.print_newline ()
 
@@ -36,6 +36,4 @@ let run s = Errors.run_with_pretty_errors (fun () -> go s)
 
 (*let () = Config.set_verbose true*)
 
-let () = run "let rec go i = match i with 0 -> 10 | j -> go (j - 1) in go 5;;"
-(*let () = run "let sum n = let rec go acc i = match i with 0 -> acc | _ -> go (acc + i) (i - 1) in go 0 n;;"*)
-(*let () = run "let rec fib n = match n with 0 -> 1 | 1 -> 1 | _ -> (fib (n - 1)) + (fib (n - 2));; fib 7;;"*)
+let () = run "();;"

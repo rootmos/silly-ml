@@ -48,6 +48,12 @@ defragment_countdown:
     andb $0b11111101, \flags
 .endm
 
+#   - ZF=0 if \flags are marked or free
+#   - ZF=1 if \flags neither
+.macro is_marked_or_free flags
+    testb $0b11, \flags
+.endm
+
 .macro slot_size slot dest
     movq (\slot), \dest
     shlq $8, \dest
@@ -182,7 +188,8 @@ malloc_found_suitable_slot:
     je malloc_done
 
     movq %r13, (%rbx) # set new slot's size
-    set_free 7(%rbx)  # set its free frag
+    set_free 7(%rbx)  # set its free flag
+    unset_mark 7(%rbx)  # unset its marked flag
 
 malloc_done:
     movq %r9, %rax
@@ -198,7 +205,8 @@ malloc_done:
 #  %rdi - allocated memory to free
 .global free
 free:
-    set_free -1(%rdi)  # set its free frag
+    set_free -1(%rdi)  # set its free flag
+    unset_mark -1(%rdi)  # unset its mark flag
 
     movq defragment_countdown, %rax
     testq %rax, %rax
@@ -210,6 +218,12 @@ free:
 free_done:
     decq defragment_countdown
     ret
+
+# input:
+#  %rdi - allocated memory to be marked
+.global mark
+mark:
+    set_mark -1(%rdi)  # set its mark flag
 
 
 defragment:
@@ -255,4 +269,57 @@ defragment_chunk_done:
     jmp defragment_start
 
 defragment_done:
+    ret
+
+.global sweep
+sweep:
+    movq root_chunk, %r10 # %r10 := current chunk
+
+sweep_start:
+    movq %r10, %rbx
+    addq $16, %rbx        # %rbx := current slot
+    movq 8(%r10), %rcx    # %rcx := end of chunk
+
+sweep_consider_slot:
+    cmpq %rcx, %rbx   # check if its at the edge of the chunk
+    je sweep_chunk_done
+
+    slot_size %rbx, %r8   # %r8 := current slot size
+
+    is_marked 7(%rbx)
+    jz sweep_handle_free
+
+    set_free 7(%rbx)
+    unset_mark 7(%rbx)
+
+sweep_handle_free:
+    is_free 7(%rbx)
+    jz sweep_move_to_next_slot
+
+    mov %rbx, %r12
+    addq %r8, %r12
+
+    cmpq %rcx, %r12   # check if its at the edge of the chunk
+    je sweep_chunk_done
+
+    is_marked_or_free 7(%r12)  # check if next slot is free or marked (ie
+    jz sweep_move_to_next_slot # would become free anyway)
+
+    slot_size %r12 %r13
+    addq %r13, (%rbx)
+    addq %r13, %r8
+
+sweep_move_to_next_slot:
+    addq %r8, %rbx
+    jmp sweep_consider_slot
+
+sweep_chunk_done:
+    movq (%r10), %r11     # %r11 - next chunk
+
+    cmpq $0, %r11         # if next chunk == NULL
+    je sweep_done
+    movq %r11, %r10       # else set next as current chunk
+    jmp sweep_start
+
+sweep_done:
     ret

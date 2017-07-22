@@ -22,6 +22,7 @@ type op =
 | Sub of operand * operand
 | Mul of operand * operand
 | Cmp of operand * operand
+| Test of operand * operand
 | Shr of int * operand
 | Shl of int * operand
 | Inc of operand
@@ -31,6 +32,7 @@ type op =
 | Jmp of operand
 | Je of operand
 | Jne of operand
+| Jz of operand
 | Set_label of label
 | Comment of string
 | Ret
@@ -75,16 +77,20 @@ end) = struct
   let sub o1 o2 = L.tell [ Sub (o1, o2) ]
   let mul o1 o2 = L.tell [ Mul (o1, o2) ]
   let cmp o1 o2 = L.tell [ Cmp (o1, o2) ]
+  let test o1 o2 = L.tell [ Test (o1, o2) ]
   let shr n o = L.tell [ Shr (n ,o) ]
   let shl n o = L.tell [ Shl (n ,o) ]
   let set_label l = L.tell [ Set_label l ]
   let jne o = L.tell [ Jne o ]
   let je o = L.tell [ Je o ]
+  let jz o = L.tell [ Jz o ]
   let jmp o = L.tell [ Jmp o ]
   let ret = L.tell [ Ret ]
   let comment s = L.tell [ Comment s ]
   let nop = L.tell []
   let inc o = L.tell [ Inc o ]
+  let push o = L.tell [ Push o ]
+  let pop o = L.tell [ Pop o ]
 
   let const i = Constant i
   let reg r = Register r
@@ -220,13 +226,19 @@ module Flags_field = struct
     | Tuple ->   0b010
     | Tag ->     0b100
 
+  let test_kind k target = Local.(test (const @@ encode_kind k) target)
+
   let set { kind; arity; } target =
     Local.(
       mov (const @@ encode_kind kind) target >>
       shl (64-8) target >>
       add (const arity) target)
 
-  let get_kind target = Local.(shr (64-8) target)
+  (* Assumption: all objects on the heap have a flag structure
+   * at offset 0 *)
+  let get_flags from target = Local.(mov (deref 0 from) target)
+  let decode_into_kind target = Local.(shr (64-8) target)
+  let decode_into_arity target = Local.(shl 8 target >> shr 8 target)
 end
 
 module Tuple_struct = struct
@@ -270,6 +282,14 @@ module Closure_struct = struct
   let key_offset o = words ((2*o)) + header_size
   let value_offset o = words ((2*o) + 1) + header_size
 
+  let encode_value_offset_in_place target =
+    Local.(
+      shl 1 target >>
+      inc target >>
+      mul (const 8) target >>
+      add (const header_size) target
+    )
+
   let key o r = Local.(deref (key_offset o) r)
   let value o r = Local.(deref (value_offset o) r)
 
@@ -294,6 +314,8 @@ module Int_struct = struct
   let encode_in_place target = Local.(shl 1 target >> inc target)
 
   let cmp i target = Local.(cmp (const @@ (i lsl 1) lor 0b1) target)
+
+  let is_int target = Local.(test (const 0b1) target)
 end
 
 module Abort = struct
@@ -336,6 +358,92 @@ let lookup_identifier = {
     set_label "__lookup_identifier_done" >>
     mov (derefw 1 rbx) (reg rax) >>
     ret |> run_)
+}
+
+let mark = {
+  global = false;
+  label = "__mark";
+  code = Local.(
+    define (reg rdi) >>= function value ->
+    comment "check if it's an integer" >>
+    Int_struct.is_int value >>
+    je (label "__mark_done") >>
+
+    comment "make our mark" >>
+    call "mark" [value] >>
+
+    comment "fetch its kind" >>
+    mov value (reg rax) >>
+    let kind = (reg rbx) in
+    Flags_field.get_flags rax kind >>
+    Flags_field.decode_into_kind kind >>
+
+    comment "is it a closure?" >>
+    Flags_field.(test_kind Closure kind) >>
+    jne (label "__mark_tuple") >>
+
+    comment "mark its continuation" >>
+    let tmp1, tmp2 = rax, reg rdi in
+    mov value (reg tmp1) >>
+    mov (Closure_struct.continuation tmp1) tmp2 >>
+    test tmp2 tmp2 >>
+    jz (label "__mark_closure_has_no_continuation") >>
+    call "__mark" [tmp2] >>
+    set_label "__mark_closure_has_no_continuation" >>
+
+    comment "fetch its arity" >>
+    let tmp1, tmp2 = rax, reg rbx in
+    mov value (reg tmp1) >>
+    declare >>= fun arity ->
+    Flags_field.get_flags tmp1 tmp2 >>
+    Flags_field.decode_into_arity tmp2 >>
+    mov tmp2 arity >>
+
+    comment "loop through the clourse's bindings" >>
+    define (const 0) >>= fun offset ->
+    set_label "__mark_closure_loop" >>
+    let tmp = reg rax in
+    mov arity tmp >> cmp tmp offset >>
+    je (label "__mark_done") >>
+    comment "calculate offset and set marks recursively" >>
+    let tmp = reg rdi in
+    mov offset tmp >>
+    Closure_struct.encode_value_offset_in_place tmp >>
+    call "__mark" [tmp] >>
+    comment "increment and loop" >>
+    inc offset >>
+    jmp (label "__mark_closure_loop") >>
+
+
+    set_label "__mark_tuple" >>
+    comment "is it a tuple?" >>
+    Flags_field.(test_kind Tuple kind) >>
+    jne (label "__mark_tag") >>
+    let tmp = rax in
+    mov value (reg tmp) >>
+    call "__mark" [Tuple_struct.a tmp] >>
+    mov value (reg tmp) >>
+    call "__mark" [Tuple_struct.b tmp] >>
+    je (label "__mark_done") >>
+
+
+    set_label "__mark_tag" >>
+    comment "now we assume it has kind tag" >>
+    let tmp = rax in
+    mov value (reg tmp) >>
+    call "__mark" [Tag_struct.value tmp] >>
+
+    set_label "__mark_done"
+  ) |> Local.ret
+}
+
+let gc = {
+  global = false;
+  label = "__gc";
+  code = Local.(
+    call mark.label [reg rdi] >>
+    call "sweep" []
+  ) |> Local.run_
 }
 
 let rec go_value ~current_closure ?(target=Register RAX) v =
@@ -470,6 +578,11 @@ and go ~current_closure ~current_continuation ?(ctx=Ctx.empty) l =
       mov arg (reg rdi) >>
       mov k (reg rsi) >>
       mov (Closure_struct.continuation rsi) (reg rdx) >>
+
+      push (reg rdi) >> push (reg rsi) >> push (reg rdx) >>
+      call gc.label [reg rsi] >>
+      pop rdx >> pop rsi >> pop rdi >>
+
       jmp (Closure_struct.code_addr rsi) |> run_) in
   match l with
   | A.E_value v ->
@@ -664,6 +777,7 @@ module Output = struct
     | Sub (o1, o2) -> sprintf "subq %s, %s" (operand o1) (operand o2)
     | Mul (o1, o2) -> sprintf "imulq %s, %s" (operand o1) (operand o2)
     | Cmp (o1, o2) -> sprintf "cmpq %s, %s" (operand o1) (operand o2)
+    | Test (o1, o2) -> sprintf "testq %s, %s" (operand o1) (operand o2)
     | Shr (n, o) -> sprintf "shrq $%d, %s" n (operand o)
     | Shl (n, o) -> sprintf "shlq $%d, %s" n (operand o)
     | Inc o -> sprintf "incq %s" (operand o)
@@ -676,6 +790,8 @@ module Output = struct
     | Jne l -> sprintf "jne %s" (operand l)
     | Je ((Dereference _) as o)  -> sprintf "je *%s" (operand o)
     | Je l -> sprintf "je %s" (operand l)
+    | Jz ((Dereference _) as o)  -> sprintf "jz *%s" (operand o)
+    | Jz l -> sprintf "jz %s" (operand l)
     | Ret -> sprintf "ret"
     | Set_label l -> sprintf "%s:" l
     | Comment s -> String.split_lines s
@@ -728,7 +844,9 @@ let anf_to_asm l =
       malloc Closure_struct.header_size >>
       lea exit_closure.label (reg rcx) >>
       mov (reg rcx) (Closure_struct.code_addr rax) >>
-      mov (const 0) (Closure_struct.continuation rax)
+      mov (const 0) (Closure_struct.continuation rax) >>
+      Flags_field.(
+        set { kind = Closure; arity = 0 } (Closure_struct.flags rax))
     ) |> Local.ret
   } in
   let main = {
@@ -745,8 +863,8 @@ let anf_to_asm l =
     Abort.match_error;
     Abort.abort;
     lookup_identifier;
-    exit_closure;
-    exit_capture;
+    exit_closure; exit_capture;
+    mark; gc;
     main;
   ] in
   String.concat ~sep:"\n" @@ List.concat [
