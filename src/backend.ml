@@ -368,6 +368,9 @@ let mark = {
   global = false;
   label = "__mark";
   code = Local.(
+    test (reg rdi) (reg rdi) >>
+    jz (label "__mark_done") >>
+
     define (reg rdi) >>= function value ->
     comment "check if it's an integer" >>
     Int_struct.is_int value >>
@@ -392,10 +395,7 @@ let mark = {
     let tmp1, tmp2 = rax, reg rdi in
     mov value (reg tmp1) >>
     mov (Closure_struct.continuation tmp1) tmp2 >>
-    test tmp2 tmp2 >>
-    jz (label "__mark_closure_has_no_continuation") >>
     call "__mark" [tmp2] >>
-    set_label "__mark_closure_has_no_continuation" >>
 
     comment "fetch its arity" >>
     let tmp1, tmp2 = rax, reg rbx in
@@ -417,16 +417,11 @@ let mark = {
     Closure_struct.encode_value_offset_in_place tmp1 >>
     mov value (reg tmp2) >>
     add tmp1 (reg tmp2) >>
-    inc offset >>
-    mov (deref 0 tmp2) tmp1 >>
-    test tmp1 tmp1 >>
-    jz (label "__mark_closure_loop") >>
+    call "__mark" [deref 0 tmp2] >>
 
-    call "__mark" [tmp1] >>
     comment "increment and loop" >>
-
+    inc offset >>
     jmp (label "__mark_closure_loop") >>
-
 
     set_label "__mark_tuple" >>
     comment "is it a tuple?" >>
