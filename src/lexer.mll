@@ -25,6 +25,7 @@ rule read = parse
   | "of" { OF }
   | "in" { IN }
   | "fun" { FUN }
+  | "rec" { REC }
   | "match" { MATCH }
   | "with" { WITH }
   | "->" { ARROW }

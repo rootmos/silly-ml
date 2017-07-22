@@ -7,6 +7,7 @@
 %token TYPE
 %token PIPE
 %token FUN
+%token REC
 %token ARROW
 %token ASTERISK
 %token DOUBLE_SEMICOLON
@@ -41,6 +42,11 @@ let rec mk_fun e = function
   | p :: [] -> Parsed.E_fun (p, e)
   | p :: ps -> Parsed.E_fun (p, mk_fun e ps)
 
+let mk_rec_fun i e = function
+  | [] -> failwith "nullary recursive functions not supported"
+  | p :: [] -> Parsed.E_rec_fun (i, p, e)
+  | p :: ps -> Parsed.E_rec_fun (i, p, mk_fun e ps)
+
 %}
 
 %%
@@ -50,8 +56,11 @@ program:
   ;
 
 statement:
-  | LET; i = IDENTIFIER; ps = nonempty_list(simple_pattern); EQUAL; e = expression
-    { Parsed.S_let (Parsed.P_ident i, mk_fun e ps) }
+  | LET; REC; i = IDENTIFIER; ps = nonempty_list(simple_pattern);
+    EQUAL; e = expression
+    { Parsed.S_let (Parsed.P_ident i, mk_rec_fun i e ps) }
+  | LET; i = IDENTIFIER; ps = nonempty_list(simple_pattern);
+    EQUAL; e = expression { Parsed.S_let (Parsed.P_ident i, mk_fun e ps) }
   | LET; p = simple_pattern; EQUAL; e = expression
     { Parsed.S_let (p, e) }
   | TYPE; i = IDENTIFIER; EQUAL; vs = variants
@@ -89,8 +98,12 @@ expression_without_sequence:
 expression_without_match_without_sequence:
   | f = simple_expression; args = nonempty_list(simple_expression_argument)
     { Parsed.E_apply (f, args) }
-  | v = VARIANT; e = expression_without_match_without_sequence { Parsed.E_constr (v, Some e) }
+  | v = VARIANT; e = expression_without_match_without_sequence
+    { Parsed.E_constr (v, Some e) }
   | v = VARIANT { Parsed.E_constr (v, None) }
+  | LET; REC; i = IDENTIFIER; ps = nonempty_list(simple_pattern); EQUAL;
+    e = expression IN; body = expression_without_match_without_sequence
+    { Parsed.E_let (Parsed.P_ident i, mk_rec_fun i e ps, body) }
   | LET; i = IDENTIFIER; ps = nonempty_list(simple_pattern); EQUAL;
     e = expression IN; body = expression_without_match_without_sequence
     { Parsed.E_let (Parsed.P_ident i, mk_fun e ps, body) }
@@ -143,5 +156,6 @@ match_with:
   ;
 
 match_case:
-  | p = pattern; ARROW; e = expression_without_match_without_sequence { (p, e) }
+  | p = pattern; ARROW; e = expression_without_match_without_sequence
+    { (p, e) }
   ;

@@ -18,6 +18,7 @@ type expression =
 | E_unit
 | E_let of pattern * expression * expression
 | E_fun of pattern * expression
+| E_rec_fun of string * pattern * expression
 | E_match of expression * (pattern * expression) list
 [@@deriving sexp]
 
