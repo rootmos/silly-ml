@@ -287,6 +287,15 @@ module Closure_struct = struct
   let map t ~f = List.map t.offsets ~f
 end
 
+module Int_struct = struct
+  let mk i target = Local.(mov (const @@ (i lsl 1) lor 0b1) target)
+
+  let decode_in_place target = Local.(shr 1 target)
+  let encode_in_place target = Local.(shl 1 target >> inc target)
+
+  let cmp i target = Local.(cmp (const @@ (i lsl 1) lor 0b1) target)
+end
+
 module Abort = struct
   let messages = [
     "__match_error_msg", "match error\\n";
@@ -314,28 +323,25 @@ end
 
 let lookup_identifier = {
   global = false;
-  label = "lookup_identifier";
+  label = "__lookup_identifier";
   code = Listing.(
     let id = reg rsi in
     mov (reg rdi) (reg rbx) >>
     add (const Closure_struct.header_size) (reg rbx) >>
-    set_label "lookup_identifier_loop" >>
+    set_label "__lookup_identifier_loop" >>
     cmp (deref 0 rbx) id >>
-    je (label "lookup_identifier_done") >>
+    je (label "__lookup_identifier_done") >>
     add (const (words 2)) (reg rbx) >>
-    jmp (label "lookup_identifier_loop") >>
-    set_label "lookup_identifier_done" >>
+    jmp (label "__lookup_identifier_loop") >>
+    set_label "__lookup_identifier_done" >>
     mov (derefw 1 rbx) (reg rax) >>
     ret |> run_)
 }
 
-let mk_int i = (i lsl 1) lor 0b1
-
 let rec go_value ~current_closure ?(target=Register RAX) v =
   let open Local in
   match v with
-  | A.V_int i ->
-      mov (const (mk_int i)) target
+  | A.V_int i -> Int_struct.mk i target
   | A.V_tuple (a, b) ->
       define current_closure >>= fun current_closure ->
 
@@ -382,10 +388,7 @@ let rec mk_pattern_match ~str ~abort
       )
   | A.P_wildcard | A.P_unit -> []
   | A.P_int i ->
-      Listing.(
-        cmp (const (mk_int i)) value >>
-        jne abort |> run_
-      )
+      Local.( Int_struct.cmp i value >> jne abort |> run_ )
   | A.P_tuple (a, b) ->
       Local.(
         (* TODO: this leaks stack memory when sub-patterns fail in switches *)
@@ -524,14 +527,13 @@ and go ~current_closure ~current_continuation ?(ctx=Ctx.empty) l =
         declare >>= fun ma ->
         comment "fetch first operand" >>
         go_value ~current_closure ~target:ma a >>
-        shr 1 ma >>
+        Int_struct.decode_in_place ma >>
         comment "fetch second operand" >>
         go_value ~current_closure ~target:(reg rdi) b >>
-        shr 1 (reg rdi) >>
+        Int_struct.decode_in_place (reg rdi) >>
         comment "I think therefore I sum..." >>
         add ma (reg rdi) >>
-        shl 1 (reg rdi) >>
-        inc (reg rdi) >>
+        Int_struct.encode_in_place (reg rdi) >>
         mov cc (reg rdx) >>
         return (reg rdi, reg rdx)) |> Local.run in
       (l @ call_continuation cc arg), ctx
@@ -542,14 +544,13 @@ and go ~current_closure ~current_continuation ?(ctx=Ctx.empty) l =
         declare >>= fun ma ->
         comment "fetch first operand" >>
         go_value ~current_closure ~target:ma a >>
-        shr 1 ma >>
+        Int_struct.decode_in_place ma >>
         comment "fetch second operand" >>
         go_value ~current_closure ~target:(reg rdi) b >>
-        shr 1 (reg rdi) >>
+        Int_struct.decode_in_place (reg rdi) >>
         sub (reg rdi) ma >>
         mov ma (reg rdi) >>
-        shl 1 (reg rdi) >>
-        inc (reg rdi) >>
+        Int_struct.encode_in_place (reg rdi) >>
         mov cc (reg rdx) >>
         return (reg rdi, reg rdx)) |> Local.run in
       (l @ call_continuation cc arg), ctx
@@ -560,27 +561,26 @@ and go ~current_closure ~current_continuation ?(ctx=Ctx.empty) l =
         declare >>= fun ma ->
         comment "fetch first operand" >>
         go_value ~current_closure ~target:ma a >>
-        shr 1 ma >>
+        Int_struct.decode_in_place ma >>
         comment "fetch second operand" >>
         go_value ~current_closure ~target:(reg rdi) b >>
-        shr 1 (reg rdi) >>
+        Int_struct.decode_in_place (reg rdi) >>
         mul ma (reg rdi) >>
-        shl 1 (reg rdi) >>
-        inc (reg rdi) >>
+        Int_struct.encode_in_place (reg rdi) >>
         mov cc (reg rdx) >>
         return (reg rdi, reg rdx)) |> Local.run in
       (l @ call_continuation cc arg), ctx
   | A.E_primitive ("%exit%", [a]) ->
       Local.(
         go_value ~current_closure ~target:(reg rdi) a >>
-        shr 1 (reg rdi) >>
+        Int_struct.decode_in_place (reg rdi) >>
         call "exit" [reg rdi]) |> Local.run_, ctx
   | A.E_primitive ("%print_int%", [a]) ->
       let (arg, cc), l = Local.(
         define current_continuation >>= fun cc ->
         comment "fetch operand" >>
         go_value ~current_closure ~target:(reg rdi) a >>
-        shr 1 (reg rdi) >>
+        Int_struct.decode_in_place (reg rdi) >>
         comment "convert to string" >>
         call "itos" [reg rdi] >>
         comment "write to stdout" >>
