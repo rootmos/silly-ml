@@ -5,4 +5,4 @@ let rec fib n = match n with
 
 print_int (fib 7); print_newline ();;
 print_int (fib 8); print_newline ();;
-print_int (fib 27); print_newline ();;
+print_int (fib 30); print_newline ();;

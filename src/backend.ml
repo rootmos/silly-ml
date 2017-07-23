@@ -465,7 +465,7 @@ let gc = {
     mov (label gc_countdown_label) (reg rax) >>
     test (reg rax) (reg rax) >>
     jnz (label "__gc_done") >>
-    mov (const 20) (label gc_countdown_label) >>
+    mov (const 1000) (label gc_countdown_label) >>
 
     define (reg rdi) >>= fun arg ->
     define (reg rsi) >>= fun closure ->
