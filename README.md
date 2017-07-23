@@ -4,10 +4,13 @@ silly-ml
 
 `silly-ml` (aka [vacation-ml](https://en.wikipedia.org/wiki/Summer)) is a:
 * small ML-like, type-checked language,
-* both interpreted and compiled to x86-64 assembly,
-* created because [it's weekend](https://www.isittheweekendyet.com/) and
-* written in [OCaml](https://ocaml.org/) and inspired by
-  [OCaml](https://github.com/ocaml/ocaml).
+* interpreted in a REPL or compiled to x86-64 assembly (with garbage getting both marked and sweeped),
+* created because [it's weekend](https://www.isittheweekendyet.com/) and because I haven't written one before,
+* coded in [OCaml](https://ocaml.org/) and inspired by [OCaml](https://github.com/ocaml/ocaml).
+
+_Disclaimer:_ the silly prefix indicates that this is a hobby project with no other
+purpose than to learn and explore and it should definently be interpreted as an
+homage to its big brothers.
 
 Usage
 -----
