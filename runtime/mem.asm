@@ -74,18 +74,21 @@ new_chunk:
     movq heap_chunk_size, %rax
     call new_pages
 
-    movq $0, (%rax) # first quad: next chunk
+    movq $0, (%rax)             # first quad: next chunk
 
-    mov %rax, 8(%rax)
-    movq heap_chunk_size, %r10 # second quad: end of chunk
+    mov %rax, 8(%rax)           # second quad: end of chunk
+    movq heap_chunk_size, %r10
     addq %r10, 8(%rax)
+
+    mov %rax, 16(%rax)          # third quad: pointer to first slot
+    add $24, 16(%rax)
 
     # initialize first slot
     movq heap_chunk_size, %rbx # set size
-    sub $16, %rbx
-    movq %rbx, 16(%rax)
+    sub $24, %rbx
+    movq %rbx, 24(%rax)
     # set flags
-    set_free 23(%rax)
+    set_free 31(%rax)
 
     ret
 
@@ -122,8 +125,7 @@ malloc:
 
 malloc_start:
     movq 8(%r10), %rcx    # %rcx := end of chunk
-    movq %r10, %rbx       # %rbx := slot under consideration
-    addq $16, %rbx
+    movq 16(%r10), %rbx   # %rbx := slot under consideration
 
 malloc_loop:
     slot_size %rbx %r8    # %r8 := size of current slot
@@ -171,7 +173,7 @@ malloc_found_suitable_slot:
     subq %rax, %r13
 
     cmpq $8, %r13     # if next slot would be too small
-    jle malloc_done   # then don't partinion current slot
+    jle malloc_done   # then don't partition current slot
 
     # else partition slot
     movq %rax, (%rbx) # set size
@@ -185,6 +187,8 @@ malloc_found_suitable_slot:
     unset_mark 7(%rbx)
 
 malloc_done:
+    movq %r9, 16(%r10)
+
     movq %r9, %rax
     addq $8, %rax
     popq %r13
@@ -206,7 +210,7 @@ free:
     jnz free_done
 
     call defragment
-    movq $50, defragment_countdown
+    movq $300, defragment_countdown
 
 free_done:
     decq defragment_countdown
@@ -232,7 +236,8 @@ defragment:
 
 defragment_start:
     movq %r10, %rbx
-    addq $16, %rbx        # %rbx := current slot
+    addq $24, %rbx        # %rbx := current slot (now: first slot)
+    movq %rbx, 16(%r10)    # reset chunks slot pointer
     movq 8(%r10), %rcx    # %rcx := end of chunk
 
 defragment_consider_slot:
@@ -278,7 +283,8 @@ sweep:
 
 sweep_start:
     movq %r10, %rbx
-    addq $16, %rbx        # %rbx := current slot
+    addq $24, %rbx        # %rbx := current slot
+    movq %rbx, 16(%r10)   # reset chunks slot pointer
     movq 8(%r10), %rcx    # %rcx := end of chunk
 
 sweep_consider_slot:
