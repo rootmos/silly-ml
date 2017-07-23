@@ -177,6 +177,17 @@ module Local = struct
     mov v o >>
     return o
 
+  let free_scope =
+    get >>= fun s ->
+    add (const s.size) (reg rsp) >>
+    return ()
+
+  let close_scope =
+    get >>= fun s ->
+    put {s with size = 0 } >>
+    add (const s.size) (reg rsp) >>
+    return ()
+
   let run ?(init=empty) t =
     let a, s = t init in
     let ls =
@@ -504,45 +515,55 @@ let rec go_value ~current_closure ?(target=Register RAX) v =
       Tag_struct.set (Tag_struct.flags rax) >>
       mov (reg rax) target
 
-let rec mk_pattern_match ~str ~abort
+let rec mk_pattern_match ~str ~abort ~label_prefix
   ?(value=Register RDI) ?(closure=RSI) p =
-  let open Listing in
   let comment = Comment (sprintf "matching: %s"
     (Anf.sexp_of_pattern p |> Sexp.to_string_hum)) in
   comment :: match p with
   | A.P_ident id ->
       let o = Closure_struct.find str id in
-      Listing.(
-        mov value (Closure_struct.value o closure) |> run_
-      )
+      Listing.(mov value (Closure_struct.value o closure) |> run_)
   | A.P_wildcard | A.P_unit -> []
   | A.P_int i ->
-      Local.( Int_struct.cmp i value >> jne abort |> run_ )
+      Local.( Int_struct.cmp i value >> jne (label abort) |> run_ )
   | A.P_tuple (a, b) ->
       Local.(
-        (* TODO: this leaks stack memory when sub-patterns fail in switches *)
+        let suffix = fresh_identifier () in
+        let new_abort_label = sprintf "%s_abort_%d" label_prefix suffix
+        and ok_label = sprintf "%s_ok_%d" label_prefix suffix in
         define value >>= fun value' ->
+
+        comment "matching fst" >>
         mov value' (reg rax) >>
         mov (Tuple_struct.a rax) (reg rbx) >>
-        insert (mk_pattern_match ~str ~abort ~closure
-          ~value:(reg rbx) a) >>
+        insert (mk_pattern_match ~str ~abort:new_abort_label
+          ~label_prefix ~closure ~value:(reg rbx) a) >>
 
+        comment "matching snd" >>
         mov value' (reg rax) >>
         mov (Tuple_struct.b rax) (reg rbx) >>
-        insert (mk_pattern_match ~str ~abort ~closure
-          ~value:(reg rbx) b)
+        insert (mk_pattern_match ~str ~abort:new_abort_label
+          ~label_prefix ~closure ~value:(reg rbx) b) >>
+
+        jmp (label ok_label) >>
+
+        set_label new_abort_label >>
+        free_scope >>
+        jmp (label abort) >>
+
+        set_label ok_label
       ) |> Local.run_
   | A.P_tag (t, p) ->
       Listing.(
         mov value (reg rax) >>
         cmp (const t) (Tag_struct.tag rax) >>
-        jne abort >>
+        jne (label abort) >>
         mov (Tag_struct.value rax) (reg rbx) >>
         insert (mk_pattern_match ~str ~abort ~closure
-          ~value:(reg rbx) p)
+          ~label_prefix ~value:(reg rbx) p)
       ) |> Listing.run_
 
-let rec mk_closure ~ctx ?(abort=Label Abort.match_error.label) uc =
+let rec mk_closure ~ctx ?(abort=Abort.match_error.label) uc =
   let str = Closure_struct.mk uc in
   let l = sprintf "__f_%d" (fresh_identifier ()) in
   let body, ctx = go
@@ -587,7 +608,7 @@ let rec mk_closure ~ctx ?(abort=Label Abort.match_error.label) uc =
             (Anf.sexp_of_expression uc.A.uc_body |> Sexp.to_string_hum))
         ] in
         let pattern = mk_pattern_match ~str
-          ~abort uc.A.uc_p in
+          ~abort ~label_prefix:l uc.A.uc_p in
         List.concat [comment; pattern; body]
     }
   } in
@@ -753,8 +774,8 @@ and go ~current_closure ~current_continuation ?(ctx=Ctx.empty) l =
           | [] -> ctx, ls
           | (case, l) :: tail ->
               let next_case = match tail with
-              | (_, l) :: _ -> Label l
-              | [] -> Label Abort.match_error.label in
+              | (_, l) :: _ -> l
+              | [] -> Abort.match_error.label in
               let closure, ctx = mk_closure ~ctx ~abort:next_case case in
               let ls' = Listing.(
                 set_label l >>

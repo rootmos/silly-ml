@@ -119,7 +119,7 @@ let transform_to_anf lambda =
         this = expression a;
         and_then = {
           uc_p = P_ident a';
-          uc_free = []; uc_self = None;
+          uc_free = L.free b; uc_self = None;
           uc_body = E_this_and_then {
             this = expression b;
             and_then = {

@@ -1,0 +1,7 @@
+type t = A of int;;
+
+let rec go (A n) = match n with
+| 0 -> ()
+| _ -> go (A (n - 1));;
+
+go (A 10);;

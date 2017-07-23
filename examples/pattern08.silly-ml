@@ -1,0 +1,5 @@
+let rec go x = match x with
+| (_, 0) -> ()
+| (_, n) -> go (0, n - 1);;
+
+go (0, 100);;
