@@ -50,9 +50,7 @@ void take_action(uint64_t i) {
 void verify(uint64_t i) {
     if (slice[i].alive) {
         for (uint64_t j = 0; j < slice[i].size; ++j) {
-            if (slice[i].mem[j] != slice[i].data[j]) {
-                abort();
-            }
+            assert(slice[i].mem[j] == slice[i].data[j]);
         }
     }
 }
@@ -84,6 +82,8 @@ int main() {
     for (uint64_t n = 0; n < runs; ++n) {
         run(n);
     }
+
+    assert(malloc(409600*2) != NULL);
 
     return 0;
 }

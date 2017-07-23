@@ -120,8 +120,19 @@ malloc:
     movq %rdi, %rax
     round %rax 3
     addq $8, %rax # add slot header size to required size
-
     movq root_chunk, %r10 # %r10 := current chunk
+
+    # test whether:
+    # (requested size (%rax) + chunk header) <= heap_chunk_size
+    movq %rax, %rbx
+    add $32, %rbx
+malloc_heap_chunk_size_check:
+    cmpq heap_chunk_size, %rbx
+    jle malloc_start
+
+    # if not, double heap_chunk_size
+    shlq $1, heap_chunk_size
+    jmp malloc_heap_chunk_size_check
 
 malloc_start:
     movq 8(%r10), %rcx    # %rcx := end of chunk
