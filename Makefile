@@ -3,6 +3,9 @@ OCB := ocamlbuild $(OCB_FLAGS)
 
 SRC=$(shell ls src/*.ml src/*.mly src/*.mll)
 
+.PHONY: build
+build: compiler.native repl.native runtime/libruntime.a
+
 .PHONY: repl
 repl: repl.native
 	rlwrap ./$<
@@ -38,11 +41,10 @@ debug: compiler.native
 	gdb a.out
 
 .PHONY: examples
-examples: $(foreach e, $(shell ls examples/*.silly-ml), $(e)-run)
+examples: $(foreach e, $(wildcard examples/*.silly-ml), $(e)-run)
 
 examples/%.silly-ml-run: examples/%.silly-ml compiler.native runtime/libruntime.a
 	./run-example.sh $<
 
-.PHONY: runtime/libruntime.a
 runtime/libruntime.a:
 	$(MAKE) -C runtime libruntime.a
