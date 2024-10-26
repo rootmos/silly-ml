@@ -1,6 +1,6 @@
 silly-ml
 ========
-[![Build Status](https://travis-ci.org/rootmos/silly-ml.svg?branch=master)](https://travis-ci.org/rootmos/silly-ml)
+[![Build, test and push image](https://github.com/rootmos/silly-ml/actions/workflows/build-test-push.yaml/badge.svg)](https://github.com/rootmos/silly-ml/actions/workflows/build-test-push.yaml)
 
 `silly-ml` (aka [vacation-ml](https://en.wikipedia.org/wiki/Summer)) is a:
 * small ML-like, type-checked language,
@@ -18,6 +18,7 @@ Simplest way to try it out is by using Docker:
 ```
 docker run -it rootmos/silly-ml
 ```
+and maybe use [rlwrap](https://man.archlinux.org/man/rlwrap.1) to get a proper REPL feeling with line editing, history etc.
 
 Examples
 --------
